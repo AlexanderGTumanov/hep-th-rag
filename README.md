@@ -28,7 +28,7 @@ The project is organized into several main directories:
     - `chunk_embeddings.pt` contains encoded chunks.
     - `chunk_ids.json` contains chunk metadata for fast retrieval.
   - `metadata.jsonl` contains article metadata.
-  - `/corpus_sample` is included in the GitHub version of the project with a small sample corpus to demonstrate the system.
+  - `/corpus_sample` is included in the GitHub version of the project and provides a small sample corpus for illustration.
 - `/model` contains the pretrained model and related files:
   - `model.pt` with the pretrained model weights.
   - `vocab.jsonl` with the corresponding vocabulary.
