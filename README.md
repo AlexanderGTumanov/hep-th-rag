@@ -20,8 +20,15 @@ The project is organized into several main directories:
 - `/src` includes the core Python code:
   - `scraper.py` for downloading and preparing arXiv data.
   - `model.py` for the neural network and embedding logic.
-- `/data` contains example data:
-  - `/corpus_sample` provides a small sample corpus to demonstrate the system.
+- When running from scratch, the following will be created in the `/data` folder:
+  - `/raw` contains `source.tar.gz` files for all downloaded articles.
+  - `/processed` contains the processed versions of these articles, split into sections.
+  - `/corpus` contains:
+    - `chunks.jsonl` contains unencoded text chunks.
+    - `chunk_embeddings.pt` contains encoded chunks.
+    - `chunk_ids.json` contains chunk metadata for fast retrieval.
+  - `metadata.jsonl` contains article metadata.
+  - `/corpus_sample` is included in the GitHub version of the project with a small sample corpus to demonstrate the system.
 - `/model` contains the pretrained model and related files:
   - `model.pt` with the pretrained model weights.
   - `vocab.jsonl` with the corresponding vocabulary.
