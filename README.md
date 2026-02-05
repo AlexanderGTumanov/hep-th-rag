@@ -12,7 +12,7 @@ The model was trained for three epochs. The parameters were chosen to yield an a
 
 ---
 
-## Project Structure
+## Project structure
 
 The project is organized into several main directories:
 
@@ -36,7 +36,7 @@ The project is organized into several main directories:
 
 ---
  
-## What It Does
+## What it does
 
 - Data extraction and processing
   - Retrieves source files for arXiv articles in a given category (hep-th by default) over a specified date range.
