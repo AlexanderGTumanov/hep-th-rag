@@ -11,6 +11,22 @@ The dataset consists of five years of hep-th arXiv submissions from 2021 to 2025
 The model was trained for three epochs. The parameters were chosen to yield an approximate training time of 15 hours per epoch on a 32 GB Mac M1 system, which was used for this project.
 
 ---
+ 
+## What it does
+
+- Data extraction and processing
+  - Retrieves source files for arXiv articles in a given category (hep-th by default) over a specified date range.
+  - Splits articles into sections and converts them into clean text by removing LaTeX artifacts, environments, and custom macros.
+  - Builds a corpus by subdividing sections into overlapping chunks of a specified character length.
+- Model training
+  - Builds a word-level vocabulary from the corpus and encodes chunks as token IDs.
+  - Pads or truncates chunks to a fixed sequence length and constructs train and validation dataloaders.
+  - Trains a Transformer encoder with a contrastive objective in a dual-encoder setup and records per-batch training and validation loss.
+- Retrieval functionality
+  - Computes embeddings for all corpus chunks.
+  - Encodes user queries and retrieves the most relevant chunks via fast similarity search.
+
+---
 
 ## Project structure
 
@@ -33,20 +49,4 @@ The project is organized into several main directories:
   - `model.pt` with the pretrained model weights.
   - `vocab.jsonl` with the corresponding vocabulary.
   - `history.pt` with per-batch training and validation loss history.
-
----
- 
-## What it does
-
-- Data extraction and processing
-  - Retrieves source files for arXiv articles in a given category (hep-th by default) over a specified date range.
-  - Splits articles into sections and converts them into clean text by removing LaTeX artifacts, environments, and custom macros.
-  - Builds a corpus by subdividing sections into overlapping chunks of a specified character length.
-- Model training
-  - Builds a word-level vocabulary from the corpus and encodes chunks as token IDs.
-  - Pads or truncates chunks to a fixed sequence length and constructs train and validation dataloaders.
-  - Trains a Transformer encoder with a contrastive objective in a dual-encoder setup and records per-batch training and validation loss.
-- Retrieval functionality
-  - Computes embeddings for all corpus chunks.
-  - Encodes user queries and retrieves the most relevant chunks via fast similarity search.
 
