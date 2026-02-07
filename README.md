@@ -98,6 +98,36 @@ Builds a corpus of text chunks from all papers in the `/processed` folder and sa
 
 ## Contents of `model.py`
 
+#### `Vocab(token_to_id, id_to_token)`
+
+Defines a vocabulary object that maps between tokens and their integer IDs. The `token_to_id` dictionary stores the mapping from tokens to indices, while `id_to_token` provides the reverse mapping. The vocabulary includes two special tokens: `<pad>` for padding and `<unk>` for out-of-vocabulary words.
+
+The `encode` method converts a list of tokens into their corresponding IDs, replacing any unknown tokens with the `<unk>` ID. The `decode` method performs the reverse operation, turning a sequence of IDs back into text. By default, it skips special tokens such as `<pad>` and `<unk>` when reconstructing the text.
+
+#### `ArxivChunkDataset(vocab, seq_len, corpus_dir = "../data/corpus", random_crop = False)`
+
+Defines a PyTorch dataset that loads text chunks from `chunks.jsonl`, tokenizes them, and converts them into fixed-length sequences of token IDs. The dataset uses the provided `vocab` to encode tokens and enforces a sequence length of `seq_len` for all samples.
+
+If a chunk is longer than `seq_len`, it is either truncated from the end or randomly cropped, depending on the value of `random_crop`. If it is shorter, it is padded with the `<pad>` token. An attention mask is created alongside the token IDs to ensure that padding tokens do not affect attention computations.
+
+Each item returned by the dataset contains `input_ids`, the corresponding `attention_mask`, and minimal metadata identifying the chunk and its source document.
+
+#### `iterate_chunks(chunks_path = "../data/corpus/chunks.jsonl")`
+
+Streams text chunks from a `chunks.jsonl` file. Each non-empty line is parsed as JSON, and the `text` field is extracted and yielded one chunk at a time. This function is useful for memory-efficient operations, such as building vocabularies or computing statistics over the corpus.
+
+#### `load_chunks(chunks_path = "../data/corpus/chunks.jsonl")`
+
+Loads all chunk records from a `chunks.jsonl` file into memory. Each non-empty line is parsed as JSON and stored as a dictionary in a list, which is then returned. This function is used when full access to the chunk metadata is required.
+
+#### `build_vocab(chunks, min_freq = 5, max_vocab = None, vocab_path = "../model/vocab.jsonl", overwrite = False)`
+
+Builds a vocabulary by scanning the loaded chunks, collecting all distinct tokens, and ordering them by frequency of occurrence. The tail of this distribution typically consists of rare terminology and mistyped words, and should be truncated. This can be done either by setting a minimum frequency with `min_freq` or by hard-limiting the vocabulary size with `max_vocab`. The resulting vocabulary is returned and saved to `vocab_path`. If the file already exists, it is only overwritten when `overwrite` is set to `True`.
+
+#### `load_vocab(vocab_path = "../model/vocab.jsonl")`
+
+Loads a vocabulary file from the specified location.
+
 #### `ChunkEncoder(vocab_size, d_model = 256, n_heads = 8, n_layers = 4, d_ff = 1024, max_len = 512, dropout = 0.1, out_dim = 256, use_positional_encoding = False)`
 
 Defines a Transformer-based encoder that maps tokenized text chunks into fixed-size dense embeddings. The model uses a `d_model`-dimensional token representation, multiple self-attention layers with `n_heads` attention heads each, and feed-forward blocks of size `d_ff`. The final output is projected to an embedding of size `out_dim`, which is used for retrieval.
