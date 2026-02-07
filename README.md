@@ -50,7 +50,7 @@ The project is organized into several main directories:
   - `vocab.jsonl` with the corresponding vocabulary.
   - `history.pt` with per-batch training and validation loss history.
 
- ---
+---
 
 ## Contents of `scraper.py`
 
@@ -84,6 +84,19 @@ Processes all papers in the `/raw` directory. First, custom macros are extracted
 
 Builds a corpus of text chunks from all papers in the `/processed` folder and saves it as `chunks.jsonl` in the `/corpus` directory inside `data`. Each section of each paper is subdivided into chunks of character length `chunk_size`. The `overlap` parameter creates a small overlap between neighboring chunks. Each chunk is assigned a unique ID. Although chunk length is specified in characters, the function avoids splitting individual words to keep tokenization consistent. As a result, chunk sizes vary slightly. With `overwrite = False`, the function does not run if the corpus already exists. With `overwrite = True`, the corpus is rebuilt from scratch.
 
+---
+
+## Contents of `model.py`
+
+#### `train_model(model, train_loader, valid_loader, epochs, batches = 0, model_dir = "../model", dropout = 0.1, lr = 3e-4, tau = 0.05, max_grad_norm = 1.0, clip_start_batch = None)`
+
+Trains `model` using an InfoNCE / NT-Xent–style contrastive objective in a dual-encoder setup. Training runs for the number of epochs specified by `epochs` and, optionally, for a fixed number of additional batches specified by `batches`. The `train_loader` and `valid_loader` provide the input data. The `dropout` and `lr` parameters control the dropout rate and learning rate, respectively.
+
+The `tau` parameter sets the temperature of the similarity distribution used in the contrastive loss, controlling how sharply the model distinguishes between positive and negative pairs. The `max_grad_norm` parameter specifies the gradient clipping threshold applied during optimizer steps; gradients with a larger norm are scaled down to this value.
+
+The `clip_start_batch` parameter allows gradient clipping to be disabled for the first few batches of the first epoch. Early training steps of a freshly initialized model often produce unusually large gradients due to random parameter initialization, and clipping during this phase can slow training. When continuing training from a previously trained model, it is recommended to set `clip_start_batch` to `None`.
+
+The model saves a checkpoint in the `/model` folder at the end of each training epoch. Along with the checkpoint, it records the per-batch training and validation losses, as well as the contents of all batches for which gradient clipping occurred.
 
 
 
