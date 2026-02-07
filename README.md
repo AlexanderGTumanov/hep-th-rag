@@ -88,6 +88,16 @@ Builds a corpus of text chunks from all papers in the `/processed` folder and sa
 
 ## Contents of `model.py`
 
+#### `ChunkEncoder(vocab_size, d_model = 256, n_heads = 8, n_layers = 4, d_ff = 1024, max_len = 512, dropout = 0.1, out_dim = 256, use_positional_encoding = False)`
+
+Defines a Transformer-based encoder that maps tokenized text chunks into fixed-size dense embeddings. The model uses a `d_model`-dimensional token representation, multiple self-attention layers with `n_heads` attention heads each, and feed-forward blocks of size `d_ff`. The final output is projected to an embedding of size `out_dim`, which is used for retrieval.
+
+Positional encoding is optional and controlled by the `use_positional_encoding` flag. In dense retrieval settings, positional information is not always necessary, since the goal is to capture overall semantic content rather than precise token order. When positional encoding is enabled, `max_len` specifies the maximum sequence length supported by the encoder. When positional encoding is disabled, the model becomes agnostic to the sequence length of the chunks, and `max_len` is not used.
+
+#### `load_model(model_path)`
+
+Loads a pretrained model from the specified location.
+
 #### `train_model(model, train_loader, valid_loader, epochs, batches = 0, model_dir = "../model", dropout = 0.1, lr = 3e-4, tau = 0.05, max_grad_norm = 1.0, clip_start_batch = None)`
 
 Trains `model` using an InfoNCE / NT-Xent–style contrastive objective in a dual-encoder setup. Training runs for the number of epochs specified by `epochs` and, optionally, for a fixed number of additional batches specified by `batches`. The `train_loader` and `valid_loader` provide the input data. The `dropout` and `lr` parameters control the dropout rate and learning rate, respectively.
