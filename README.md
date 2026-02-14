@@ -128,6 +128,14 @@ Streams text chunks from a `chunks.jsonl` file. Each non-empty line is parsed as
 
 Loads all chunk records from a `chunks.jsonl` file into memory. Each non-empty line is parsed as JSON and stored as a dictionary in a list, which is then returned. This function is used when full access to the chunk metadata is required.
 
+#### `prepare_dataloaders(vocab, seq_len, batch_size = 128, valid_split = 0.2, seed = 42, unk_discard_ratio = 0.5, pad_threshold_ratio = 0.7, corpus_dir = "../data/corpus")`
+
+Builds training and validation dataloaders from the corpus. It creates two dataset instances (with random cropping for training and without for validation), splits the data according to `valid_split` using the provided `seed`, and filters out chunks where the non-padded portion contains more than `unk_discard_ratio` `<unk>` tokens, provided the overall padding ratio is below `pad_threshold_ratio`. The remaining samples are wrapped into subsets and returned as `DataLoader` objects with the specified `seq_len`, `batch_size`, with shuffling enabled for training and the last incomplete batch dropped in both loaders. Note that the `seed` only affects the train–validation split and not the cropping of the training dataset. This ensures that, over multiple epochs, the model sees most of the training data, while none of the validation data enters the training loop.
+
+#### `prepare_embedding_dataloader(vocab, seq_len, batch_size = 128, corpus_dir = "../data/corpus")`
+
+Builds a single dataloader for embedding generation. It creates a dataset without random cropping, does not perform any `<unk>`-based filtering or train–validation split, and returns a `DataLoader` with the specified `vocab`, `seq_len`, `batch_size`, and `corpus_dir`. The data is processed in order and the final incomplete batch is kept.
+
 #### `ChunkEncoder(vocab_size, d_model = 256, n_heads = 8, n_layers = 4, d_ff = 1024, max_len = 512, dropout = 0.1, out_dim = 256, use_positional_encoding = False)`
 
 Defines a Transformer-based encoder that maps tokenized text chunks into fixed-size dense embeddings. The model uses a `d_model`-dimensional token representation, multiple self-attention layers with `n_heads` attention heads each, and feed-forward blocks of size `d_ff`. The final output is projected to an embedding of size `out_dim`, which is used for retrieval.
@@ -138,9 +146,9 @@ Positional encoding is optional and controlled by the `use_positional_encoding` 
 
 Loads a pretrained model from the specified location.
 
-#### `train_model(model, train_loader, valid_loader, epochs, batches = 0, model_dir = "../model", dropout = 0.1, lr = 3e-4, tau = 0.05, max_grad_norm = 1.0, clip_start_batch = None)`
+#### `train_model(model, train_loader, valid_loader, epochs, batches = 0, start_batch = 0, model_dir = "../model", dropout = 0.1, lr = 3e-4, tau = 0.05, max_grad_norm = 1.0, clip_start_batch = 0)`
 
-Trains `model` using an InfoNCE / NT-Xent–style contrastive objective in a dual-encoder setup. Training runs for the number of epochs specified by `epochs` and, optionally, for a fixed number of additional batches specified by `batches`. The `train_loader` and `valid_loader` provide the input data. The `dropout` and `lr` parameters control the dropout rate and learning rate, respectively.
+Trains `model` using an InfoNCE / NT-Xent–style contrastive objective in a dual-encoder setup. Training runs for the number of epochs specified by `epochs` and, optionally, for a fixed number of additional batches specified by `batches`. By default, these batches are taken from the beginning of the dataloader. The `start_batch` parameter can be used to specify a different starting batch. The `train_loader` and `valid_loader` provide the input data. The `dropout` and `lr` parameters control the dropout rate and learning rate, respectively.
 
 The `tau` parameter sets the temperature of the similarity distribution used in the contrastive loss, controlling how sharply the model distinguishes between positive and negative pairs. The `max_grad_norm` parameter specifies the gradient clipping threshold applied during optimizer steps; gradients with a larger norm are scaled down to this value.
 
