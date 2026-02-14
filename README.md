@@ -156,5 +156,9 @@ The `clip_start_batch` parameter allows gradient clipping to be disabled for the
 
 The model saves a checkpoint in the `/model` folder at the end of each training epoch. Along with the checkpoint, it records the per-batch training and validation losses, as well as the contents of all batches for which gradient clipping occurred.
 
+#### `build_chunk_embeddings(model, loader, corpus_dir = "../data/corpus")`
+
+Computes and stores embeddings for all chunks in the corpus. Concatenates the embeddings into a single tensor, saves it to `chunk_embeddings.pt`, and writes the list of chunk IDs to `chunk_ids.json` in the specified `corpus_dir`.
+
 
 
