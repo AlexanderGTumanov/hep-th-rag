@@ -178,7 +178,7 @@ Performs a fast lexical prefilter using TF–IDF similarity to select a subset o
 
 Calls `prefilter_chunks` to retrieve the top `lexical_candidates` chunks that match the prompt. It then encodes the prompt with the neural model and computes similarity scores against the embeddings of those chunks. Returns a list of `(score, chunk_id)` pairs sorted by semantic similarity.
 
-### `rerank_matches(matches, pool_level = "section", top_k_chunks = 1, top_k_sections = 1, corpus_dir = "../data/corpus")`
+#### `rerank_matches(matches, pool_level = "section", top_k_chunks = 1, top_k_sections = 1, corpus_dir = "../data/corpus")`
 
 Aggregates chunk-level semantic scores into document-level rankings. If `pool_level = "paper"`, scores are aggregated at the document level by averaging the top `top_k_chunks` chunk scores within each paper. If `pool_level = "section"`, scores are first aggregated within each section: each section receives the average of its top `top_k_chunks` chunk scores, and the final paper score is the average of the top `top_k_sections` section scores. By default, `top_k_chunks = 1` and `top_k_sections = 1`, which corresponds to taking the maximum score at each stage.
 
