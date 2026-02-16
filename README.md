@@ -163,5 +163,27 @@ The model saves a checkpoint in the `/model` folder at the end of each training 
 
 Computes and stores embeddings for all chunks in the corpus. Concatenates the embeddings into a single tensor, saves it to `chunk_embeddings.pt`, and writes the list of chunk IDs to `chunk_ids.json` in the specified `corpus_dir`.
 
+#### `encode_prompt(prompt, vocab, seq_len)`
 
+Normalizes and prepares a user query for the encoder. The text is tokenized, mapped to vocabulary IDs, truncated or padded to the given sequence length, and returned as (input_ids, attention_mask) tensors.
+
+#### `prefilter_chunks(prompt, lexical_candidates = 1000, corpus_dir = "../data/corpus")`
+
+Performs a fast lexical prefilter using TF–IDF similarity to select a subset of likely relevant chunks before dense reranking. It encodes the prompt and all chunk texts in a TF–IDF space, computes cosine similarities, and returns the IDs of the top-scoring chunks. `prompt` is the query string, while `lexical_candidates` controls how many top chunks to keep.
+
+#### `semantic_matches(prompt, model, vocab, seq_len, lexical_candidates = 1000, corpus_dir = "../data/corpus")`
+
+Calls `prefilter_chunks` to retrieve the top `lexical_candidates` chunks that match the prompt. It then encodes the prompt with the neural model and computes similarity scores against the embeddings of those chunks. Returns a list of `(score, chunk_id)` pairs sorted by semantic similarity.
+
+### `rerank_matches(matches, pool_level = "section", top_k_chunks = 1, top_k_sections = 1, corpus_dir = "../data/corpus")`
+
+Aggregates chunk-level semantic scores into document-level rankings. If `pool_level = "paper"`, scores are aggregated at the document level by averaging the top `top_k_chunks` chunk scores within each paper. If `pool_level = "section"`, scores are first aggregated within each section: each section receives the average of its top `top_k_chunks` chunk scores, and the final paper score is the average of the top `top_k_sections` section scores. By default, `top_k_chunks = 1` and `top_k_sections = 1`, which corresponds to taking the maximum score at each stage.
+
+#### `print_matches(matches, top_k = 10, max_sections = None, corpus_dir = "../data/corpus"):`
+
+Prints retrieval results in a human-readable form. It accepts either chunk-level matches (output of `semantic_matches`) or document-level match dictionaries (output of `rerank_matches`) and displays the top `top_k` results. For document-level matches, it also lists the highest-scoring sections, optionally limited by `max_sections`.
+
+#### `find_paper(matches, doc_ids, corpus_dir = "../data/corpus")`
+
+A diagnostics tool that checks whether a paper, or a list of papers identified by their arXiv IDs `doc_ids`, appears in the `matches` list and reports its best rank and score. `doc_ids` can be either a single paper ID string or a list of such strings. This function accepts both pre-rerank and post-rerank `matches` variables.
 
