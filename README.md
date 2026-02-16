@@ -55,12 +55,13 @@ The project is organized into several main directories:
 
 ## Pretrained model
 
-The `/model` folder contains a pretrained encoder stored in `model.pt`. The model was trained for five epochs on a corpus of roughly 830,000 chunks built from hep-th arXiv publications between 2021 and 2025. The corresponding vocabulary, containing about 48,000 words, is provided in `vocab.jsonl`.
+The `/model` folder contains a pretrained encoder stored in `model.pt`. The model was trained for three and a half epochs on a corpus of roughly 885,000 chunks built from hep-th arXiv publications between 2021 and 2025. The corresponding vocabulary, containing about 43,000 words, is provided in `vocab.jsonl`.
 
-The encoder is a Transformer-based model with a 256-dimensional token representation, four self-attention layers, and eight attention heads per layer. Each layer uses a feed-forward block of size 640 with a dropout rate of 0.1. The model produces a 256-dimensional output embedding and does not use positional encoding, so it remains agnostic to the sequence length of the input chunks within reasonable limits. Training was performed with a sequence length of 160 tokens. The average chunk length in the corpus was 288 tokens, so chunks were truncated during training. Truncation was applied randomly and independently at each epoch, which means the model saw the vast majority of the data over the course of all five epochs.
+The encoder is a Transformer-based model with a 256-dimensional token representation, four self-attention layers, and eight attention heads per layer. Each layer uses a feed-forward block of size 640 with a dropout rate of 0.1. The model produces a 256-dimensional output embedding and does not use positional encoding, so it remains largely agnostic to the input sequence length within reasonable limits.
+
+Training was primarily performed with a sequence length of 160 tokens, followed by an additional half-epoch at a context length of 320 tokens. The average chunk length in the corpus is about 320 tokens, so chunks were truncated during the main training stage. Truncation was applied randomly and independently at each epoch, which ensured that the model still saw the vast majority of the data before the transition to the 320-token context stage.
 
 Training and validation loss history is stored in `history.pt` and plotted below.
-
 
 ![Training loss](model/history.png)
 
