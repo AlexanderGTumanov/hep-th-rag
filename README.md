@@ -61,6 +61,9 @@ The encoder is a Transformer-based model with a 256-dimensional token representa
 
 Training and validation loss history is stored in `history.pt` and plotted below.
 
+
+![Training loss](model/history.png)
+
 The accompanying notebook provides step-by-step instructions on how to use the model to perform dense reranking on top of a fast similarity search, in order to retrieve the most relevant papers from the corpus. The procedure is demonstrated both on the original 1.6 GB corpus and on a smaller sample corpus included with the GitHub version of the project. In both cases, the model consistently improves the rankings of thematically relevant papers.
 
 ---
