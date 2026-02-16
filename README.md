@@ -6,9 +6,9 @@ This project builds a semantic search engine for the high-energy theoretical phy
 
 The retrieval model is a Transformer-based encoder that maps token sequences to fixed-size embeddings. The model uses a 256-dimensional token representation, four Transformer layers, eight attention heads per layer, and feed-forward blocks of size 640 with a dropout rate of 0.1, and produces a 256-dimensional output embedding.
 
-The dataset consists of five years of hep-th arXiv submissions from 2021 to 2025, including cross-listed papers, for a total of over 36,000 documents. After removing equations, citations, figures, and other LaTeX artifacts, the cleaned corpus is approximately 1.4 GB of text. The corpus was divided into about 830,000 chunks, and a custom vocabulary of roughly 48,000 tokens was built from this data.
+The dataset consists of five years of hep-th arXiv submissions from 2021 to 2025, including cross-listed papers, for a total of over 36,000 documents. After removing equations, citations, figures, and other LaTeX artifacts, the cleaned corpus is approximately 1.6 GB of text. The corpus was divided into about 885,000 chunks, and a custom vocabulary of roughly 43,000 tokens was built from this data.
 
-The model was trained for three epochs. The parameters were chosen to yield an approximate training time of 15 hours per epoch on a 32 GB Mac M1 system, which was used for this project.
+The model was trained for three epochs with a context length of 160 tokens. The parameters were chosen to yield an approximate training time of 15 hours per epoch on a 32 GB Mac M1 system, which was used for this project. After that, the model was trained for an additional half epoch at a context length of 320 tokens, which matches the average chunk length of the constructed corpus and the embedding size used during retrieval.
 
 ---
  
@@ -23,8 +23,9 @@ The model was trained for three epochs. The parameters were chosen to yield an a
   - Pads or truncates chunks to a fixed sequence length and constructs train and validation dataloaders.
   - Trains a Transformer encoder with a contrastive objective in a dual-encoder setup and records per-batch training and validation loss.
 - Retrieval functionality
-  - Computes embeddings for all corpus chunks.
-  - Encodes user queries and retrieves the most relevant chunks via fast similarity search.
+  - Computes dense embeddings for all chunks in the corpus.
+  - Encodes the user query and performs a fast similarity search to retrieve a set of likely candidate chunks.
+  - Reranks the candidates with the encoder to promote the most semantically relevant papers to the top, and returns the final ranked list of papers.
 
 ---
 
@@ -59,6 +60,8 @@ The `/model` folder contains a pretrained encoder stored in `model.pt`. The mode
 The encoder is a Transformer-based model with a 256-dimensional token representation, four self-attention layers, and eight attention heads per layer. Each layer uses a feed-forward block of size 640 with a dropout rate of 0.1. The model produces a 256-dimensional output embedding and does not use positional encoding, so it remains agnostic to the sequence length of the input chunks within reasonable limits. Training was performed with a sequence length of 160 tokens. The average chunk length in the corpus was 288 tokens, so chunks were truncated during training. Truncation was applied randomly and independently at each epoch, which means the model saw the vast majority of the data over the course of all five epochs.
 
 Training and validation loss history is stored in `history.pt` and plotted below.
+
+The accompanying notebook provides step-by-step instructions on how to use the model to perform dense reranking on top of a fast similarity search, in order to retrieve the most relevant papers from the corpus. The procedure is demonstrated both on the original 1.6 GB corpus and on a smaller sample corpus included with the GitHub version of the project. In both cases, the model consistently improves the rankings of thematically relevant papers.
 
 ---
 
