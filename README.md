@@ -8,6 +8,12 @@ The retrieval model is a Transformer-based encoder that maps token sequences to 
 
 The dataset consists of five years of hep-th arXiv submissions from 2021 to 2025, including cross-listed papers, for a total of over 36,000 documents. After removing equations, citations, figures, and other LaTeX artifacts, the cleaned corpus is approximately 1.6 GB of text. The corpus was divided into about 885,000 chunks, and a custom vocabulary of roughly 43,000 tokens was built from this data.
 
+The corpus is not included in this repository, but can be downloaded from Hugging Face:
+
+https://huggingface.co/datasets/AlexanderGTumanov/hep-th-rag
+
+Create a `/data` directory in the project root and place the `/corpus` folder inside it, as many functions expect this as the default location.
+
 The model was trained for three epochs with a context length of 160 tokens. The parameters were chosen to yield an approximate training time of 15 hours per epoch on a 32 GB Mac M1 system, which was used for this project. After that, the model was trained for an additional half epoch at a context length of 320 tokens, which matches the average chunk length of the constructed corpus and the embedding size used during retrieval.
 
 ---
