@@ -45,7 +45,6 @@ The project is organized into several main directories:
     - `chunk_embeddings.pt` contains encoded chunks.
     - `chunk_ids.json` contains chunk metadata for fast retrieval.
   - `metadata.jsonl` contains article metadata.
-  - `/corpus_sample` is included in the GitHub version of the project and provides a small sample corpus for illustration.
 - `/model` contains the pretrained model and related files:
   - `model.pt` with the pretrained model weights.
   - `vocab.jsonl` with the corresponding vocabulary.
@@ -65,7 +64,62 @@ Training and validation loss history is stored in `history.pt` and plotted below
 
 ![Training loss](model/history.png)
 
-The accompanying notebook provides step-by-step instructions on how to use the model to perform dense reranking on top of a fast similarity search, in order to retrieve the most relevant papers from the corpus. The procedure is demonstrated both on the original 1.6 GB corpus and on a smaller sample corpus included with the GitHub version of the project. In both cases, the model consistently improves the rankings of thematically relevant papers.
+The accompanying notebook provides step-by-step instructions on how to use the model to perform dense reranking in conjunction with a fast lexical similarity search, in order to retrieve the most relevant papers from the corpus.
+
+---
+
+## Ranking methods
+
+Using dense retriever networks for ranking is not as straightforward as it might initially seem. Dense scores are not always a direct improvement over lexical search; in practice, they often work best as a complement to it. A detailed discussion of the different ranking methods and the regimes where each performs well is given in the notebook. Here we present a brief summary.
+
+Consider the following prompt:
+
+prompt = (
+    "Finite-coupling exact results for N = 4 SYM form factors of local operators "
+    "as expansions around the collinear limits of null-polygons, "
+    "obtained through the use of integrability methods."
+)
+
+This prompt contains several specific technical terms, but overall it remains fairly vague in the context of high energy theory. As a whole, however, it is well suited to identifying a particular sequence of papers written by the author of this project and collaborators between 2021 and 2025. In particular, the following four papers should be expected to rank highly:
+
+- **2308.08432:** *Wilson Loop Duality and OPE for Super Form Factors of Half-BPS Operators* by Benjamin Basso, Alexander G. Tumanov
+- **2209.06816:** *Analytic Four-Point Lightlike Form Factors and OPE of Null-Wrapped Polygons* by Yuanhong Guo, Lei Wang, Gang Yang
+- **2112.10569:** *An Operator Product Expansion for Form Factors III. Finite Coupling and Multi-Particle Contributions* by Amit Sever, Alexander G. Tumanov, Matthias Wilhelm
+- **2105.13367:** *An Operator Product Expansion for Form Factors II. Born level* by Amit Sever, Alexander G. Tumanov, Matthias Wilhelm
+
+After retrieving the top 5000 lexical candidate chunks, we find mixed results:
+
+```
+Paper rankings before dense reranking:
+2308.08432: present, rank =  247, score =  0.233014
+2209.06816: present, rank = 1542, score =  0.169453
+2112.10569: present, rank =    3, score =  0.361611
+2105.13367: present, rank = 1619, score =  0.167905
+```
+
+One of the papers, `2112.10569`, ranked appropriately high at rank 3, which suggests a strong lexical match with substantial vocabulary overlap with the prompt. Another paper, `2308.08432`, landed in a middle-of-the-road position, while the other two papers were not flagged by the lexical similarity search at all. The simplest next step is to apply dense reranking to all 5000 retrieved chunks, completely replacing their lexical scores. This yields:
+
+```
+Paper rankings after dense reranking:
+2308.08432: present, rank =    1, score =  0.410493
+2209.06816: present, rank = 1003, score =  0.099015
+2112.10569: present, rank =  415, score =  0.176434
+2105.13367: present, rank =  258, score =  0.203030
+```
+
+This leads to some major improvements. Paper `2308.08432` rises all the way to rank 1, while `2209.06816` and `2105.13367` both improve significantly. The problem is `2112.10569`, which drops substantially in the ranking. This is a common pattern for dense retrievers. Neural encoders gain the ability to capture broader context, but in doing so they often lose some of the precision of direct lexical matching. As a result, semantically relevant but previously low-ranked papers may move up, while papers that were already correctly placed near the top can be pushed down.
+
+A practical solution is to use a composite ranking scheme that interpolates between lexical and dense signals. Several options are explored in the notebook, but the most stable results are obtained with Reciprocal Rank Fusion (RRF), which yields the following:
+
+```
+Paper rankings after Reciprocal Rank Fusion:
+2308.08432: present, rank =    1, score =  0.092281
+2209.06816: present, rank = 1346, score =  0.000848
+2112.10569: present, rank =    7, score =  0.078677
+2105.13367: present, rank =  438, score =  0.003125
+```
+
+This represents a compromise that combines the strengths of both approaches. All papers move up in the rankings, while `2112.10569` only drops slightly. See the notebook for more detailed explanations and additional examples.
 
 ---
 
