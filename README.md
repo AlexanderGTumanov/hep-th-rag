@@ -37,7 +37,7 @@ The project is organized into several main directories:
 - `/src` includes the core Python code:
   - `scraper.py` for downloading and preparing arXiv data.
   - `model.py` for the neural network and embedding logic.
-- When running from scratch, the following will be created in the `/data` folder:
+- When running from scratch, a `/data` folder will be created with the following contents:
   - `/raw` contains `source.tar.gz` files for all downloaded articles.
   - `/processed` contains the processed versions of these articles, split into sections.
   - `/corpus` contains:
@@ -227,23 +227,33 @@ Computes and stores embeddings for all chunks in the corpus. Concatenates the em
 
 Normalizes and prepares a user query for the encoder. The text is tokenized, mapped to vocabulary IDs, truncated or padded to the given sequence length, and returned as (input_ids, attention_mask) tensors.
 
-#### `prefilter_chunks(prompt, lexical_candidates = 1000, corpus_dir = "../data/corpus")`
+#### top_lexical_chunks(prompt, lexical_candidates = 1000, corpus_dir = "../data/corpus")
 
-Performs a fast lexical prefilter using TF–IDF similarity to select a subset of likely relevant chunks before dense reranking. It encodes the prompt and all chunk texts in a TF–IDF space, computes cosine similarities, and returns the IDs of the top-scoring chunks. `prompt` is the query string, while `lexical_candidates` controls how many top chunks to keep.
+Runs a TF–IDF lexical search over the chunk corpus and returns the top-scoring chunk matches for the query. The corpus is vectorized in a TF–IDF space (with placeholder tokens filtered out), cosine similarities between the query and all chunks are computed, and the best matches are selected. The output is a list of `(tfidf_score, chunk_id)` pairs sorted in decreasing TF–IDF score. `lexical_candidates` controls how many top chunks to return.
 
-#### `semantic_matches(prompt, model, vocab, seq_len, lexical_candidates = 1000, corpus_dir = "../data/corpus")`
+#### dense_rerank(candidates, prompt, model, vocab, seq_len, method = "dense", k_pinned = 10, k_rrf = 60, alpha = 0.2, corpus_dir = "../data/corpus")
 
-Calls `prefilter_chunks` to retrieve the top `lexical_candidates` chunks that match the prompt. It then encodes the prompt with the neural model and computes similarity scores against the embeddings of those chunks. Returns a list of `(score, chunk_id)` pairs sorted by semantic similarity.
+Computes neural similarity scores for a preselected list of candidate chunks and optionally combines dense and lexical signals to produce a reranked chunk list.
 
-#### `rerank_matches(matches, pool_level = "section", top_k_chunks = 1, top_k_sections = 1, corpus_dir = "../data/corpus")`
+`candidates` must be the output of `top_lexical_chunks`, i.e. a list of `(tfidf_score, chunk_id)` pairs. The function encodes prompt using the `encode_prompt` function, obtains a dense query embedding from `model`, and scores each candidate chunk by dot product against its precomputed embedding from `chunk_embeddings.pt`. It then returns a list of `(score, chunk_id)` pairs sorted by the chosen ranking strategy.
 
-Aggregates chunk-level semantic scores into document-level rankings. If `pool_level = "paper"`, scores are aggregated at the document level by averaging the top `top_k_chunks` chunk scores within each paper. If `pool_level = "section"`, scores are first aggregated within each section: each section receives the average of its top `top_k_chunks` chunk scores, and the final paper score is the average of the top `top_k_sections` section scores. By default, `top_k_chunks = 1` and `top_k_sections = 1`, which corresponds to taking the maximum score at each stage.
+The `method` parameter controls how the final ordering is produced:
+
+- `method = "dense"`: rank candidates purely by dense similarity score.
+- `method = "tfidf"`: return candidates unchanged (TF–IDF order and scores).
+- `method = "pin_top"`: keep the first k_pinned chunks in the original TF–IDF order, and rerank the remaining chunks by dense score.
+- `method = "score_fusion"`: rank by a convex combination of dense and TF–IDF scores, `(1 - alpha) * dense + alpha * tfidf`.
+- `method = "rrf"`: rank using Reciprocal Rank Fusion, `1/(k_rrf + r_tfidf) + 1/(k_rrf + r_dense)`, where `r_tfidf` and `r_dense` are ranks in the TF–IDF and dense lists, respectively.
+
+#### `aggregate_to_papers(chunk_scores, pool_level = "section", top_k_chunks = 1, top_k_sections = 1, corpus_dir = "../data/corpus")`
+
+Aggregates chunk-level semantic scores into document-level rankings. `chunk_scores` can come from either `top_lexical_chunks` or `dense_rerank`. If `pool_level = "paper"`, scores are aggregated at the document level by averaging the top `top_k_chunks` chunk scores within each paper. If `pool_level = "section"`, scores are first aggregated within each section: each section receives the average of its top `top_k_chunks` chunk scores, and the final paper score is the average of the top `top_k_sections` section scores. By default, `top_k_chunks = 1` and `top_k_sections = 1`, which corresponds to taking the maximum score at each stage.
 
 #### `print_matches(matches, top_k = 10, max_sections = None, corpus_dir = "../data/corpus"):`
 
-Prints retrieval results in a human-readable form. It accepts either chunk-level matches (output of `semantic_matches`) or document-level match dictionaries (output of `rerank_matches`) and displays the top `top_k` results. For document-level matches, it also lists the highest-scoring sections, optionally limited by `max_sections`.
+Prints retrieval results in a human-readable form. It accepts either chunk-level matches (output of `top_lexical_chunks` or `dense_rerank`) or document-level match dictionaries (output of `aggregate_to_papers`) and displays the top `top_k` results. For document-level matches, it also lists the highest-scoring sections, optionally limited by `max_sections`.
 
 #### `find_paper(matches, doc_ids, corpus_dir = "../data/corpus")`
 
-A diagnostics tool that checks whether a paper, or a list of papers identified by their arXiv IDs `doc_ids`, appears in the `matches` list and reports its best rank and score. `doc_ids` can be either a single paper ID string or a list of such strings. This function accepts both pre-rerank and post-rerank `matches` variables.
+A diagnostics tool that checks whether a paper, or a list of papers identified by their arXiv IDs `doc_ids`, appears in the `matches` list and reports its best rank and score. `doc_ids` can be either a single paper ID string or a list of such strings. This function accepts both chunk-level and paper-level `matches` variables.
 
