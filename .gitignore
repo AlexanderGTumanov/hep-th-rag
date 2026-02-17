@@ -1,13 +1,6 @@
-/data/metadata.jsonl
-/data/corpus/
-/data/processed
-/data/raw/
-/temp/
-
-/src/__pycache__/
-
 /.DS_Store
-/data/.DS_Store
-/model/.DS_Store
 /src/.DS_Store
+/model/.DS_Store
 /notebooks/.DS_Store
+/src/__pycache__/
+/data/

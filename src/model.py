@@ -473,7 +473,7 @@ def encode_prompt(prompt, vocab, seq_len):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
     body = (prompt or "").strip()
     if any(ch in body for ch in ("_", "^", "$")):
-        raise ValueError("Prompt should not include complicated math. Simple math like N = 4 can be written directly. Complex math should be avoided or replaced with MATH/EQN placeholders.")
+        raise ValueError("Prompt should not include complicated math. Simple math like N = 4 can be written directly. Complex math should not be included.")
     body = re.sub(r"[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE63\uFF0D]", "-", body)
     body = latinize(body.lower())
     tokens = _WORD_RE.findall(body)
@@ -489,7 +489,7 @@ def encode_prompt(prompt, vocab, seq_len):
     attention_mask = torch.tensor(mask, dtype = torch.long, device = device).unsqueeze(0)
     return input_ids, attention_mask
 
-def prefilter_chunks(prompt, lexical_candidates = 1000, corpus_dir = "../data/corpus"):
+def top_lexical_chunks(prompt, lexical_candidates = 1000, corpus_dir = "../data/corpus"):
     placeholders = {"MATH", "EQN", "NUM", "CITE", "REF", "FIG", "URL", "CODE", "ALG", "ENV"}
     ids_path = os.path.join(corpus_dir, "chunk_ids.json")
     chunks_path = os.path.join(corpus_dir, "chunks.jsonl")
@@ -523,18 +523,24 @@ def prefilter_chunks(prompt, lexical_candidates = 1000, corpus_dir = "../data/co
             chunk_ids = json.load(f)
         _INDEX_CACHE[key_ids] = chunk_ids
     chunk_ids = _INDEX_CACHE[key_ids]
-    key_lex = ("tfidf-chunk", chunks_path, chunks_mtime, ids_path, ids_mtime, tuple(sorted(placeholders)))
+    key_lex = ("tfidf-chunk-v2", chunks_path, chunks_mtime, ids_path, ids_mtime, tuple(sorted(placeholders)))
     if key_lex not in _INDEX_CACHE:
         chunk_texts = []
         for cid in chunk_ids:
             rec = meta.get(cid, {})
-            chunk_texts.append(rec.get("text") or "")
+            body = (rec.get("text") or "").strip()
+            body = re.sub(r"[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE63\uFF0D]", "-", body)
+            body = latinize(body.lower())
+            chunk_texts.append(body)
         vectorizer = TfidfVectorizer(tokenizer = lambda s: [t for t in _WORD_RE.findall(s or "") if t not in placeholders], token_pattern = None, lowercase = False, min_df = 1)
         X = vectorizer.fit_transform(chunk_texts)
         X = normalize(X, norm = "l2", copy = False)
         _INDEX_CACHE[key_lex] = (vectorizer, X)
     vectorizer, X = _INDEX_CACHE[key_lex]
-    qx = vectorizer.transform([prompt])
+    qbody = (prompt or "").strip()
+    qbody = re.sub(r"[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE63\uFF0D]", "-", qbody)
+    qbody = latinize(qbody.lower())
+    qx = vectorizer.transform([qbody])
     qx = normalize(qx, norm = "l2", copy = False)
     lex_scores = (X @ qx.T).toarray().ravel()
     M = min(int(lexical_candidates), int(lex_scores.shape[0]))
@@ -542,9 +548,26 @@ def prefilter_chunks(prompt, lexical_candidates = 1000, corpus_dir = "../data/co
         return []
     cand_pos = np.argpartition(-lex_scores, M - 1)[:M]
     cand_pos = cand_pos[np.argsort(-lex_scores[cand_pos])]
-    return [chunk_ids[p] for p in cand_pos.tolist()]
+    out = []
+    for p in cand_pos.tolist():
+        out.append((float(lex_scores[p]), chunk_ids[p]))
+    return out
 
-def semantic_matches(prompt, model, vocab, seq_len, lexical_candidates = 1000, corpus_dir = "../data/corpus"):
+def dense_rerank(
+    candidates,
+    prompt,
+    model,
+    vocab,
+    seq_len,
+    method = "dense",
+    k_pinned = 10,
+    k_rrf = 10,
+    alpha = 0.5,
+    corpus_dir = "../data/corpus"
+):
+    if method == "tfidf":
+        return candidates
+
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
     emb_path = os.path.join(corpus_dir, "chunk_embeddings.pt")
     ids_path = os.path.join(corpus_dir, "chunk_ids.json")
@@ -560,21 +583,63 @@ def semantic_matches(prompt, model, vocab, seq_len, lexical_candidates = 1000, c
         chunk_id_to_index = {cid: i for i, cid in enumerate(chunk_ids)}
         _INDEX_CACHE[key_dense] = (chunk_emb, chunk_id_to_index)
     chunk_emb, chunk_id_to_index = _INDEX_CACHE[key_dense]
-    cand_chunk_ids = prefilter_chunks(prompt, corpus_dir = corpus_dir, lexical_candidates = lexical_candidates)
-    idxs = [chunk_id_to_index[cid] for cid in cand_chunk_ids if cid in chunk_id_to_index]
-    if not idxs:
-        return []
+    cand_lex_scores = [s for s, _ in candidates]
+    cand_chunk_ids = [cid for _, cid in candidates]
+    idxs = [chunk_id_to_index[cid] for cid in cand_chunk_ids]
     model = model.to(device)
     model.eval()
     with torch.no_grad():
         input_ids, attention_mask = encode_prompt(prompt, vocab, seq_len)
         q = model(input_ids, attention_mask).squeeze(0).cpu()
-    scores = (chunk_emb[idxs] @ q).tolist()
-    hits = list(zip(scores, cand_chunk_ids))
-    hits.sort(key = lambda x: x[0], reverse = True)
-    return [(float(s), cid) for s, cid in hits]
+    dense_scores = (chunk_emb[idxs] @ q).tolist()
 
-def rerank_matches(matches, pool_level = "section", top_k_chunks = 1, top_k_sections = 1, corpus_dir = "../data/corpus"):
+    if method == "dense":
+        hits = list(zip(dense_scores, cand_chunk_ids))
+        hits.sort(key = lambda x: x[0], reverse = True)
+        return hits
+
+    if method == "pin_top":
+        kk = k_pinned
+        if kk > len(cand_chunk_ids):
+            kk = len(cand_chunk_ids)
+        head = [(cand_lex_scores[i], cand_chunk_ids[i]) for i in range(kk)]
+        if kk == 0:
+            tail = [(dense_scores[i], cand_chunk_ids[i]) for i in range(len(cand_chunk_ids))]
+            tail.sort(key = lambda x: x[0], reverse = True)
+            return tail
+        cap = cand_lex_scores[kk - 1]
+        tail = []
+        for i in range(kk, len(cand_chunk_ids)):
+            s = dense_scores[i]
+            if s >= cap:
+                s = cap - 1e-12
+            tail.append((s, cand_chunk_ids[i]))
+        tail.sort(key = lambda x: x[0], reverse = True)
+        return head + tail
+
+    if method == "score_fusion":
+        hits = []
+        for ds, ls, cid in zip(dense_scores, cand_lex_scores, cand_chunk_ids):
+            score = (1.0 - alpha) * ds + alpha * ls
+            hits.append((score, cid))
+        hits.sort(key = lambda x: x[0], reverse = True)
+        return hits
+
+    if method == "rrf":
+        lex_rank = {cid: i + 1 for i, cid in enumerate(cand_chunk_ids)}
+        dense_order = list(range(len(cand_chunk_ids)))
+        dense_order.sort(key = lambda i: dense_scores[i], reverse = True)
+        dense_rank = {cand_chunk_ids[i]: r for r, i in enumerate(dense_order, start = 1)}
+        hits = []
+        for cid in cand_chunk_ids:
+            score = 1.0 / (k_rrf + lex_rank[cid]) + 1.0 / (k_rrf + dense_rank[cid])
+            hits.append((score, cid))
+        hits.sort(key = lambda x: x[0], reverse = True)
+        return hits
+
+    raise ValueError("method must be one of: 'dense', 'tfidf', 'pin_top', 'score_fusion', 'rrf'.")
+
+def aggregate_to_papers(chunk_scores, pool_level = "section", top_k_chunks = 1, top_k_sections = 1, corpus_dir = "../data/corpus"):
     chunks_path = os.path.join(corpus_dir, "chunks.jsonl")
     if not os.path.exists(chunks_path):
         raise FileNotFoundError("chunks.jsonl not found in corpus_dir.")
@@ -605,7 +670,7 @@ def rerank_matches(matches, pool_level = "section", top_k_chunks = 1, top_k_sect
     if ks <= 0:
         raise ValueError("top_k_sections must be >= 1.")
     per_doc = {}
-    for s, cid in matches:
+    for s, cid in chunk_scores:
         m = meta.get(cid)
         if m is None:
             continue
@@ -633,9 +698,9 @@ def rerank_matches(matches, pool_level = "section", top_k_chunks = 1, top_k_sect
             entry["sections"][section] = sec
         sec["n_chunks"] += 1
         sec["scores"].append(ss)
-    matches = []
+    out = []
     for doc_id, entry in per_doc.items():
-        section_matches = []
+        section_scores = []
         for sec_name, sec in entry["sections"].items():
             scores = sec.get("scores") or []
             if not scores:
@@ -643,34 +708,34 @@ def rerank_matches(matches, pool_level = "section", top_k_chunks = 1, top_k_sect
             scores.sort(reverse = True)
             kk = min(kc, len(scores))
             sec_score = sum(scores[:kk]) / kk
-            section_matches.append({
+            section_scores.append({
                 "section": sec_name,
                 "score": float(sec_score),
                 "n_chunks": int(sec["n_chunks"]),
             })
-        section_matches.sort(key = lambda x: x["score"], reverse = True)
+        section_scores.sort(key = lambda x: x["score"], reverse = True)
         if pool_level == "paper":
             scores = entry.get("scores") or []
             if not scores:
                 continue
             scores.sort(reverse = True)
             kk = min(kc, len(scores))
-            doc_score = sum(scores[:kk]) / kk
+            paper_score = sum(scores[:kk]) / kk
         else:
-            if not section_matches:
+            if not section_scores:
                 continue
-            kk = min(ks, len(section_matches))
-            doc_score = sum(h["score"] for h in section_matches[:kk]) / kk
-        matches.append({
-            "score": float(doc_score),
+            kk = min(ks, len(section_scores))
+            paper_score = sum(h["score"] for h in section_scores[:kk]) / kk
+        out.append({
+            "score": float(paper_score),
             "doc_id": doc_id,
             "title": entry.get("title"),
             "authors": entry.get("authors") or [],
             "n_chunks": int(entry["n_chunks"]),
-            "sections": section_matches,
+            "sections": section_scores,
         })
-    matches.sort(key = lambda h: h["score"], reverse = True)
-    return matches
+    out.sort(key = lambda h: h["score"], reverse = True)
+    return out
 
 def print_matches(matches, top_k = 10, max_sections = None, corpus_dir = "../data/corpus"):
     if not matches:
@@ -701,6 +766,7 @@ def print_matches(matches, top_k = 10, max_sections = None, corpus_dir = "../dat
             print(f"    title   : {title}")
             print(f"    authors : {', '.join(authors)}")
             print(f"    doc_id  : {doc_id}")
+            print(f"    chunk_id: {cid}")
             if section:
                 print(f"    section : {section}")
             print()
@@ -729,7 +795,7 @@ def print_matches(matches, top_k = 10, max_sections = None, corpus_dir = "../dat
             print()
         return
 
-    raise TypeError("please run on the output of semantic_matches or rerank_matches functions.")
+    raise TypeError("please run on the output of top_lexical_chunks, dense_rerank, or aggregate_to_papers functions.")
 
 def find_paper(matches, doc_ids, corpus_dir = "../data/corpus"):
     if isinstance(doc_ids, str):
@@ -768,13 +834,21 @@ def find_paper(matches, doc_ids, corpus_dir = "../data/corpus"):
                     out[d]["best_rank"] = rank
                     out[d]["best_score"] = float(h.get("score"))
         else:
-            raise TypeError("please run on the output of semantic_matches or rerank_matches functions.")
+            raise TypeError("please run on the output of top_lexical_chunks, dense_rerank, or aggregate_to_papers functions.")
+    max_id = max(len(str(d)) for d in doc_ids)
+    max_rank = 4
+    for d in doc_ids:
+        info = out[d]
+        if info["present"] and info["best_rank"] is not None:
+            max_rank = max(max_rank, len(str(int(info["best_rank"]))))
     for d in doc_ids:
         info = out[d]
         if info["present"]:
-            print(f"{d}: present, rank = {info['best_rank']}, score = {float(info['best_score']):.6f}")
+            rank = int(info["best_rank"])
+            score = float(info["best_score"])
+            print(f"{d:<{max_id}}: present, rank = {rank:>{max_rank}}, score = {score: .6f}")
         else:
-            print(f"{d}: not present")
+            print(f"{d:<{max_id}}: not present")
 
 def load_history(*history_paths):
     history = {"train": [], "valid": []}
