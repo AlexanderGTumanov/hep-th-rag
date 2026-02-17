@@ -74,11 +74,13 @@ Using dense retriever networks for ranking is not as straightforward as it might
 
 Consider the following prompt:
 
+```
 prompt = (
     "Finite-coupling exact results for N = 4 SYM form factors of local operators "
     "as expansions around the collinear limits of null-polygons, "
     "obtained through the use of integrability methods."
 )
+```
 
 This prompt contains several specific technical terms, but overall it remains fairly vague in the context of high energy theory. As a whole, however, it is well suited to identifying a particular sequence of papers written by the author of this project and collaborators between 2021 and 2025. In particular, the following four papers should be expected to rank highly:
 
