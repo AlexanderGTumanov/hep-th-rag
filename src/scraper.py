@@ -1266,8 +1266,8 @@ def build_corpus(
     
     files = [fn for fn in os.listdir(processed_dir) if fn.endswith(".json")]
     files.sort()
-    total_chunks = 0
     added_chunks = 0
+    total_chunks = 0
 
     with open(chunks_path, "w", encoding = "utf-8") as ch_out:
         write_line = ch_out.write
