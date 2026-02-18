@@ -247,7 +247,7 @@ The `method` parameter controls how the final ordering is produced:
 
 - `method = "dense"`: rank candidates purely by dense similarity score.
 - `method = "tfidf"`: return candidates unchanged (TF–IDF order and scores).
-- `method = "pin_top"`: keep the first k_pinned chunks in the original TF–IDF order, and rerank the remaining chunks by dense score.
+- `method = "pin_top"`: keep the first `k_pinned` chunks in the original TF–IDF order, and rerank the remaining chunks by dense score.
 - `method = "score_fusion"`: rank by a convex combination of dense and TF–IDF scores, `(1 - alpha) * dense + alpha * tfidf`.
 - `method = "rrf"`: rank using Reciprocal Rank Fusion, `1/(k_rrf + r_tfidf) + 1/(k_rrf + r_dense)`, where `r_tfidf` and `r_dense` are ranks in the TF–IDF and dense lists, respectively.
 
