@@ -243,7 +243,7 @@ class ChunkEncoder(nn.Module):
         n_heads = 8,
         n_layers = 4,
         d_ff = 1024,
-        max_len = 512,
+        max_len = 320,
         dropout = 0.1,
         out_dim = 256,
         use_positional_encoding = False
@@ -442,10 +442,16 @@ def train_model(
             json.dump(clipped_batches, f, ensure_ascii = False, indent = 2)       
     return model
 
-def build_chunk_embeddings(model, loader, corpus_dir = "../data/corpus"):
+def build_chunk_embeddings(model, loader, corpus_dir = "../data/corpus", embeddings_subdir = "embeddings", overwrite = False):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
-    out_emb_path = os.path.join(corpus_dir, "chunk_embeddings.pt")
-    out_ids_path = os.path.join(corpus_dir, "chunk_ids.json")
+    subdir = os.path.join(corpus_dir, embeddings_subdir)
+    if os.path.exists(subdir):
+        if not overwrite:
+            raise FileExistsError(f"{subdir} subdirectory already exists. Set overwrite = True or provide a different embeddings_subdir.")
+    else:
+        os.makedirs(subdir, exist_ok = True)
+    out_emb_path = os.path.join(subdir, "chunk_embeddings.pt")
+    out_ids_path = os.path.join(subdir, "chunk_ids.json")
     model = model.to(device)
     model.eval()
     all_z = []
@@ -489,12 +495,13 @@ def encode_prompt(prompt, vocab, seq_len):
     attention_mask = torch.tensor(mask, dtype = torch.long, device = device).unsqueeze(0)
     return input_ids, attention_mask
 
-def top_lexical_chunks(prompt, lexical_candidates = 1000, corpus_dir = "../data/corpus"):
+def top_lexical_chunks(prompt, lexical_candidates = 1000, corpus_dir = "../data/corpus", embeddings_subdir = "embeddings"):
     placeholders = {"MATH", "EQN", "NUM", "CITE", "REF", "FIG", "URL", "CODE", "ALG", "ENV"}
-    ids_path = os.path.join(corpus_dir, "chunk_ids.json")
+    subdir = os.path.join(corpus_dir, embeddings_subdir)
+    ids_path = os.path.join(subdir, "chunk_ids.json")
     chunks_path = os.path.join(corpus_dir, "chunks.jsonl")
     if not os.path.exists(ids_path):
-        raise FileNotFoundError("chunk_ids.json not found in corpus_dir.")
+        raise FileNotFoundError("chunk_ids.json not found in embeddings_subdir.")
     if not os.path.exists(chunks_path):
         raise FileNotFoundError("chunks.jsonl not found in corpus_dir.")
     ids_mtime = os.path.getmtime(ids_path)
@@ -563,16 +570,18 @@ def dense_rerank(
     k_pinned = 10,
     k_rrf = 10,
     alpha = 0.5,
-    corpus_dir = "../data/corpus"
+    corpus_dir = "../data/corpus",
+    embeddings_subdir = "embeddings"
 ):
     if method == "tfidf":
         return candidates
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
-    emb_path = os.path.join(corpus_dir, "chunk_embeddings.pt")
-    ids_path = os.path.join(corpus_dir, "chunk_ids.json")
+    subdir = os.path.join(corpus_dir, embeddings_subdir)
+    emb_path = os.path.join(subdir, "chunk_embeddings.pt")
+    ids_path = os.path.join(subdir, "chunk_ids.json")
     if not os.path.exists(emb_path) or not os.path.exists(ids_path):
-        raise FileNotFoundError("chunk embeddings not found; compute them first using the build_chunk_embeddings function.")
+        raise FileNotFoundError("chunk embeddings not found in embeddings_subdir; compute them first using the build_chunk_embeddings function.")
     emb_mtime = os.path.getmtime(emb_path)
     ids_mtime = os.path.getmtime(ids_path)
     key_dense = ("dense", emb_path, emb_mtime, ids_path, ids_mtime)
@@ -741,7 +750,6 @@ def print_matches(matches, top_k = 10, max_sections = None, corpus_dir = "../dat
     if not matches:
         return
     first = matches[0]
-    
     if isinstance(first, tuple):
         chunks_path = os.path.join(corpus_dir, "chunks.jsonl")
         if not os.path.exists(chunks_path):
@@ -794,7 +802,6 @@ def print_matches(matches, top_k = 10, max_sections = None, corpus_dir = "../dat
                     print(f"      {i}. {name:<{width}}score = {score:.6f}")
             print()
         return
-
     raise TypeError("please run on the output of top_lexical_chunks, dense_rerank, or aggregate_to_papers functions.")
 
 def find_paper(matches, doc_ids, corpus_dir = "../data/corpus"):
@@ -860,7 +867,7 @@ def load_history(*history_paths):
         history["valid"].extend(h.get("valid", []))
     return history
 
-def plot_history(history, log_x = False, log_y = False, batches_per_epoch = None):
+def plot_history(history, log_x = False, log_y = False, batches_per_epoch = None, title = "Training and Validation Loss"):
     train = history["train"]
     valid = history["valid"]
     vx = [i for i, v in enumerate(valid) if np.isfinite(v)]
@@ -884,7 +891,7 @@ def plot_history(history, log_x = False, log_y = False, batches_per_epoch = None
         plt.yscale("log")
     plt.xlabel("Batch")
     plt.ylabel("Loss")
-    plt.title("Training and Validation Loss")
+    plt.title(title)
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
