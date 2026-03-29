@@ -4,7 +4,9 @@
 
 This project builds a semantic search engine for the high-energy theoretical physics (hep-th) arXiv. Instead of relying on titles, abstracts, or keyword matching, the system operates on the full text of papers. Each document is split into smaller text chunks, and a neural network encodes these chunks into dense vector representations. User queries are embedded in the same space, and the system retrieves the most semantically relevant passages in the corpus. The goal is to enable fast, meaning-aware search that can locate the exact sections where specific ideas or constructions are discussed.
 
-The retrieval model is a Transformer-based encoder that maps token sequences to fixed-size embeddings. The model uses a 256-dimensional token representation, four Transformer layers, eight attention heads per layer, and feed-forward blocks of size 640 with a dropout rate of 0.1, and produces a 256-dimensional output embedding.
+The retrieval model is a Transformer-based dual encoder that maps token sequences to fixed-size embeddings and is trained with a per-batch contrastive loss. The model uses a 256-dimensional token representation, four Transformer layers, eight attention heads per layer, and feed-forward blocks of size 640 with a dropout rate of 0.1, and produces a 256-dimensional output embedding.
+
+Two versions of this model have been trained and are available to the user. One uses learned positional encoding, while the other does not. Unlike architectures such as GPT or BERT, which are trained to predict tokens at specific positions, positional encoding is not essential for a dual-encoder architecture, whose objective is to maximize semantic similarity between matched chunks in embedding space. An important part of this project is to assess whether adding it leads to meaningful improvements in retrieval performance. The results were somewhat surprising and are discussed in detail in the accompanying notebook.
 
 The dataset consists of five years of hep-th arXiv submissions from 2021 to 2025, including cross-listed papers, for a total of over 36,000 documents. After removing equations, citations, figures, and other LaTeX artifacts, the cleaned corpus is approximately 1.6 GB of text. The corpus was divided into about 885,000 chunks, and a custom vocabulary of roughly 43,000 tokens was built from this data.
 
@@ -12,13 +14,13 @@ The corpus is not included in this repository, but can be downloaded from Huggin
 
 https://huggingface.co/datasets/AlexanderGTumanov/hep-th-rag
 
-Create a `/data` directory in the project root and place the `/corpus` folder inside it, as many functions expect this as the default location.
+It contains the processed chunks along with their embeddings for both models. After downloading, create a `/data` directory in the project root and place the `/corpus` folder inside it, as many functions expect this as the default path.
 
-The model was trained for three epochs with a context length of 160 tokens. The parameters were chosen to yield an approximate training time of 15 hours per epoch on a 32 GB Mac M1 system, which was used for this project. After that, the model was trained for an additional half epoch at a context length of 320 tokens, which matches the average chunk length of the constructed corpus and the embedding size used during retrieval.
+Both versions of the model were trained for three epochs with a context length of 160 tokens. The parameters were chosen to yield an approximate training time of 15 hours per epoch on a 32 GB Mac M1 system, which was used for this project. After that, the models were trained for an additional half epoch at a context length of 320 tokens, which matches the average chunk length of the constructed corpus and the embedding size used during retrieval.
 
 ---
  
-## What it does
+## What this project does
 
 - Data extraction and processing
   - Retrieves source files for arXiv articles in a given category (hep-th by default) over a specified date range.
@@ -46,10 +48,14 @@ The project is organized into several main directories:
 - When running from scratch, a `/data` folder will be created with the following contents:
   - `/raw` contains `source.tar.gz` files for all downloaded articles.
   - `/processed` contains the processed versions of these articles, split into sections.
-  - `/corpus` contains:
+  - `/corpus` can be generated or downloaded from Hugging Face. It contains:
     - `chunks.jsonl` contains unencoded text chunks.
-    - `chunk_embeddings.pt` contains encoded chunks.
-    - `chunk_ids.json` contains chunk metadata for fast retrieval.
+    - `/embeddings` contains embeddings for the model w/o positional encoding:
+      - `chunk_embeddings.pt` contains encoded chunks.
+      - `chunk_ids.json` contains chunk metadata for fast retrieval.
+    - `/embeddings_pt` contains embeddings for the model with positional encoding:
+      - `chunk_embeddings.pt` contains encoded chunks.
+      - `chunk_ids.json` contains chunk metadata for fast retrieval (since both models were trained on the same corpus, these IDs are identical to the non-positional ones).
   - `metadata.jsonl` contains article metadata.
 - `/model` contains the pretrained model and related files:
   - `model.pt` with the pretrained model weights.
@@ -69,16 +75,15 @@ Training was primarily performed with a sequence length of 160 tokens, followed 
 Training and validation loss histories is stored in `history.pt` and `history_pe.pt` and plotted below.
 
 ![Training loss](model/history.png)
-
 ![Training loss](model/history_pe.png)
 
-The accompanying notebook provides step-by-step instructions on how to use the model to perform dense reranking in conjunction with a fast lexical similarity search, in order to retrieve the most relevant papers from the corpus.
+Both models follow the same broad trajectory, suggesting token content alone is sufficient for learning useful representations. The main difference is stability: the positional encoding model produces much smoother loss curves. Spikes reflect sensitivity to hard batches, and positional encoding helps by giving the model additional structure to differentiate token arrangements rather than collapsing them into similar embeddings.
 
 ---
 
 ## Ranking methods
 
-Using dense retriever networks for ranking is not as straightforward as it might initially seem. Dense scores are not always a direct improvement over lexical search; in practice, they often work best as a complement to it. A detailed discussion of the different ranking methods and the regimes where each performs well is given in the notebook. Here we present a brief summary.
+Using dense retriever networks for ranking is not as straightforward as it might initially seem. Dense scores are not always a direct improvement over lexical search; in practice, they often work best as a complement to it. Here we present a brief summary. We will not discuss the difference in performance between the two versions of model here, as all rankings below were generated by the no-positional-encoding model. A detailed discussion of the different ranking methods and comparison between the models' performances is given in the notebook.
 
 Consider the following prompt:
 
@@ -90,10 +95,9 @@ prompt = (
 )
 ```
 
-This prompt contains several specific technical terms, but most of the phrasing remains fairly vague in the broader context of high-energy theory. As a whole, however, it is well suited to identifying a particular sequence of papers written by the author of this project and collaborators between 2021 and 2025. In particular, the following four papers should be expected to rank highly:
+This prompt contains several specific technical terms, but most of the phrasing remains fairly vague in the broader context of high-energy theory. As a whole, however, it is well suited to identifying a particular sequence of papers written by the author of this project and collaborators between 2021 and 2025. In particular, the following three papers should be expected to rank highly:
 
 - **2308.08432:** *Wilson Loop Duality and OPE for Super Form Factors of Half-BPS Operators* by Benjamin Basso, Alexander G. Tumanov
-- **2209.06816:** *Analytic Four-Point Lightlike Form Factors and OPE of Null-Wrapped Polygons* by Yuanhong Guo, Lei Wang, Gang Yang
 - **2112.10569:** *An Operator Product Expansion for Form Factors III. Finite Coupling and Multi-Particle Contributions* by Amit Sever, Alexander G. Tumanov, Matthias Wilhelm
 - **2105.13367:** *An Operator Product Expansion for Form Factors II. Born level* by Amit Sever, Alexander G. Tumanov, Matthias Wilhelm
 
@@ -102,34 +106,37 @@ After retrieving the top 5000 lexical candidate chunks, we find mixed results:
 ```
 Paper rankings before dense reranking:
 2308.08432: present, rank =  247, score =  0.233014
-2209.06816: present, rank = 1542, score =  0.169453
 2112.10569: present, rank =    3, score =  0.361611
 2105.13367: present, rank = 1619, score =  0.167905
 ```
 
-One of the papers, `2112.10569`, ranked appropriately high at rank 3, which suggests a strong lexical match with substantial vocabulary overlap with the prompt. Another paper, `2308.08432`, landed in a middle-of-the-road position, while the other two papers were not flagged by the lexical similarity search at all. The simplest next step is to apply dense reranking to all 5000 retrieved chunks, completely replacing their lexical scores. This yields:
+One of the papers, `2112.10569`, ranked appropriately high at rank 3, which suggests a strong lexical match with substantial vocabulary overlap with the prompt. Another paper, `2308.08432`, landed in a middle-of-the-road position, while `2105.13367` was not flagged by the lexical similarity search at all. The simplest next step is to apply dense reranking to all 5000 retrieved chunks, completely replacing their lexical scores. This yields:
 
 ```
 Paper rankings after dense reranking:
 2308.08432: present, rank =    1, score =  0.410493
-2209.06816: present, rank = 1003, score =  0.099015
 2112.10569: present, rank =  415, score =  0.176434
 2105.13367: present, rank =  258, score =  0.203030
 ```
 
-This leads to some major improvements. Paper `2308.08432` rises all the way to rank 1, while `2209.06816` and `2105.13367` both improve significantly. The problem is `2112.10569`, which drops substantially in the ranking. This is a common pattern for dense retrievers. Neural encoders gain the ability to capture broader context, but in doing so they often lose some of the precision of direct lexical matching. As a result, semantically relevant but previously low-ranked papers may move up, while papers that were already correctly placed near the top can be pushed down.
+This leads to some major improvements. Paper `2308.08432` rises all the way to rank 1, while `2105.13367` both improves significantly. The problem is `2112.10569`, which drops substantially in the ranking. This is a common pattern for dense retrievers. Neural encoders gain the ability to capture broader context, but in doing so they often lose some of the precision of direct lexical matching. As a result, semantically relevant but previously low-ranked papers may move up, while papers that were already correctly placed near the top can be pushed down.
 
 A practical solution is to use a composite ranking scheme that interpolates between lexical and dense signals. Several options are explored in the notebook, but the most stable results are obtained with Reciprocal Rank Fusion (RRF), which yields the following:
 
 ```
 Paper rankings after Reciprocal Rank Fusion:
 2308.08432: present, rank =    1, score =  0.092281
-2209.06816: present, rank = 1346, score =  0.000848
 2112.10569: present, rank =    7, score =  0.078677
 2105.13367: present, rank =  438, score =  0.003125
 ```
 
 This represents a compromise that combines the strengths of both approaches. All papers move up in the rankings, while `2112.10569` only drops slightly. See the notebook for more detailed explanations and additional examples.
+
+---
+
+## Performance difference between models with and w/o positional encoding
+
+To our surprise, the model without positional encoding outperformed the one with it in the vast majority of tests. We hypothesize that this is because the inability to distinguish "cat on a mat" from "mat on a cat" matters little in a dual-encoder dense retrieval setup, where the task is semantic matching rather than word-order sensitivity. What matters more is the ability to recognize that "cat sits on a mat and licks his butt" and "while sitting on a mat, cat licks his butt" are semantically equivalent, and here the positional model systematically underperforms by pushing such paraphrases apart in embedding space. Positional encoding does offer one concrete benefit: it stabilizes training, making the model more robust to bad batches and producing noticeably less noisy loss curves. It also occasionally performs better on longer prompts containing highly positional word combinations, though achieving this typically requires the prompts to be deliberately engineered.
 
 ---
 
@@ -227,23 +234,23 @@ The `clip_start_batch` parameter allows gradient clipping to be disabled for the
 
 The model saves a checkpoint in the `/model` folder at the end of each training epoch. Along with the checkpoint, it records the per-batch training and validation losses, as well as the contents of all batches for which gradient clipping occurred.
 
-#### `build_chunk_embeddings(model, loader, corpus_dir = "../data/corpus")`
+#### `build_chunk_embeddings(model, loader, corpus_dir = "../data/corpus", embeddings_subdir = "embeddings", overwrite = False)`
 
-Computes and stores embeddings for all chunks in the corpus. Concatenates the embeddings into a single tensor, saves it to `chunk_embeddings.pt`, and writes the list of chunk IDs to `chunk_ids.json` in the specified `corpus_dir`.
+Computes and stores embeddings for all chunks in the `chunks.jsonl` file found in `corpus_dir`. Creates a subdirectory `embeddings_subdir` within `corpus_dir`, saving the embedding tensor to `chunk_embeddings.pt` and the list of chunk IDs to `chunk_ids.json`.
 
 #### `encode_prompt(prompt, vocab, seq_len)`
 
 Normalizes and prepares a user query for the encoder. The text is tokenized, mapped to vocabulary IDs, truncated or padded to the given sequence length, and returned as (input_ids, attention_mask) tensors.
 
-#### top_lexical_chunks(prompt, lexical_candidates = 1000, corpus_dir = "../data/corpus")
+#### top_lexical_chunks(prompt, lexical_candidates = 1000, corpus_dir = "../data/corpus", embeddings_subdir = "embeddings")
 
-Runs a TF–IDF lexical search over the chunk corpus and returns the top-scoring chunk matches for the query. The corpus is vectorized in a TF–IDF space (with placeholder tokens filtered out), cosine similarities between the query and all chunks are computed, and the best matches are selected. The output is a list of `(tfidf_score, chunk_id)` pairs sorted in decreasing TF–IDF score. `lexical_candidates` controls how many top chunks to return.
+Runs a TF–IDF lexical search over the chunk corpus and returns the top-scoring chunk matches for the query. The corpus is vectorized in a TF–IDF space (with placeholder tokens filtered out), cosine similarities between the query and all chunks are computed, and the best matches are selected. The output is a list of `(tfidf_score, chunk_id)` pairs sorted in decreasing TF–IDF score. `lexical_candidates` controls how many top chunks to return. `embeddings_subdir` must be specified because the function borrows chunk IDs from the corresponding embedding run. The embeddings themselves are not used at this stage.
 
-#### dense_rerank(candidates, prompt, model, vocab, seq_len, method = "dense", k_pinned = 10, k_rrf = 60, alpha = 0.2, corpus_dir = "../data/corpus")
+#### dense_rerank(candidates, prompt, model, vocab, seq_len, method = "dense", k_pinned = 10, k_rrf = 60, alpha = 0.2, corpus_dir = "../data/corpus", embeddings_subdir = "embeddings")
 
 Computes neural similarity scores for a preselected list of candidate chunks and optionally combines dense and lexical signals to produce a reranked chunk list.
 
-`candidates` must be the output of `top_lexical_chunks`, i.e. a list of `(tfidf_score, chunk_id)` pairs. The function encodes prompt using the `encode_prompt` function, obtains a dense query embedding from `model`, and scores each candidate chunk by dot product against its precomputed embedding from `chunk_embeddings.pt`. It then returns a list of `(score, chunk_id)` pairs sorted by the chosen ranking strategy.
+`candidates` must be the output of `top_lexical_chunks`, i.e. a list of `(tfidf_score, chunk_id)` pairs. The function encodes prompt using the `encode_prompt` function, obtains a dense query embedding from `model`, and scores each candidate chunk by dot product against its precomputed embedding from `chunk_embeddings.pt`. It then returns a list of `(score, chunk_id)` pairs sorted by the chosen ranking strategy. `embeddings_subdir` should correspond to the model specified in `model`.
 
 The `method` parameter controls how the final ordering is produced:
 
