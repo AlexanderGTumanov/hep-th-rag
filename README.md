@@ -119,7 +119,7 @@ Paper rankings after dense reranking:
 2105.13367: present, rank =  258, score =  0.203030
 ```
 
-This leads to some major improvements. Paper `2308.08432` rises all the way to rank 1, while `2105.13367` both improves significantly. The problem is `2112.10569`, which drops substantially in the ranking. This is a common pattern for dense retrievers. Neural encoders gain the ability to capture broader context, but in doing so they often lose some of the precision of direct lexical matching. As a result, semantically relevant but previously low-ranked papers may move up, while papers that were already correctly placed near the top can be pushed down.
+This leads to some major improvements. Paper `2308.08432` rises all the way to rank 1, while `2105.13367` improves significantly. The problem is `2112.10569`, which drops substantially in the ranking. This is a common pattern for dense retrievers. Neural encoders gain the ability to capture broader context, but in doing so they often lose some of the precision of direct lexical matching. As a result, semantically relevant but previously low-ranked papers may move up, while papers that were already correctly placed near the top can be pushed down.
 
 A practical solution is to use a composite ranking scheme that interpolates between lexical and dense signals. Several options are explored in the notebook, but the most stable results are obtained with Reciprocal Rank Fusion (RRF), which yields the following:
 
