@@ -85,8 +85,9 @@ Training was primarily performed with a sequence length of 160 tokens, followed 
 
 Training and validation loss histories is stored in `history.pt` and `history_pe.pt` and plotted below.
 
-![Training loss](model/history.png)
-![Training loss](model/history_pe.png)
+![Training loss](encoder/model_nope/history.png)
+![Training loss](encoder/model_pe/history.png)
+![Training loss](encoder/model_cls/history.png)
 
 Both models follow the same broad trajectory, suggesting token content alone is sufficient for learning useful representations. The main difference is stability: the positional encoding model produces much smoother loss curves. Spikes reflect sensitivity to hard batches, and positional encoding helps by giving the model additional structure to differentiate token arrangements rather than collapsing them into similar embeddings.
 
