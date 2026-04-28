@@ -1333,6 +1333,42 @@ def build_corpus(
     print(f"chunks added to corpus: {added_chunks} ({p_added} %)")
     print(f"chunks discarded: {discarded_chunks} ({p_discarded} %)")
 
+def build_abstracts(data_dir = "../data", overwrite = False):
+    metadata_path = os.path.join(data_dir, "metadata.jsonl")
+    corpus_dir = os.path.join(data_dir, "corpus")
+    os.makedirs(corpus_dir, exist_ok = True)
+    out_path = os.path.join(corpus_dir, "abstracts.jsonl")
+    if not overwrite and os.path.exists(out_path):
+        return
+    metadata = load_metadata(metadata_path)
+    total_abstracts = 0
+    written_abstracts = 0
+    
+    with open(out_path, "w", encoding = "utf-8") as out:
+        for doc_id, record in metadata.items():
+            abstract = record.get("abstract", "")
+            if not abstract:
+                continue
+            total_abstracts += 1
+            cleaned = clean_body(abstract)
+            if not cleaned:
+                continue
+            row = {"doc_id": doc_id,"text": cleaned}
+            out.write(json.dumps(row, ensure_ascii = False) + "\n")
+            written_abstracts += 1
+
+    discarded_abstracts = total_abstracts - written_abstracts
+    if total_abstracts > 0:
+        p_added = round(100 * written_abstracts / total_abstracts, 2)
+        p_discarded = round(100 * discarded_abstracts / total_abstracts, 2)
+    else:
+        p_added = 0
+        p_discarded = 0
+
+    print("\ntotal number of abstracts:", total_abstracts)
+    print(f"abstracts added to corpus: {written_abstracts} ({p_added} %)")
+    print(f"abstracts discarded: {discarded_abstracts} ({p_discarded} %)")
+
 def estimate_sequence_length(corpus_dir = "../data/corpus", percentile = 0.95, multiple_of = 32, verbose = True):
     def percentile_value(sorted_vals, p):
         if p <= 0:

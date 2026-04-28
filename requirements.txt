@@ -1,5 +1,9 @@
+requests
 numpy
 matplotlib
 scikit-learn
 torch
-requests
+transformers
+tokenizers
+safetensors
+huggingface_hub
