@@ -1,6 +1,6 @@
 /.DS_Store
 /src/.DS_Store
-/model/.DS_Store
+/encoder/.DS_Store
 /notebooks/.DS_Store
 /src/__pycache__/
 /data/
