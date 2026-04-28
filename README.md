@@ -26,14 +26,17 @@ Both versions of the model were trained for three epochs with a context length o
   - Retrieves source files for arXiv articles in a given category (hep-th by default) over a specified date range.
   - Splits articles into sections and converts them into clean text by removing LaTeX artifacts, environments, and custom macros.
   - Builds a corpus by subdividing sections into overlapping chunks of a specified character length.
-- Model training
+- Encoder training
   - Builds a word-level vocabulary from the corpus and encodes chunks as token IDs.
-  - Pads or truncates chunks to a fixed sequence length and constructs train and validation dataloaders.
   - Trains a Transformer encoder with a contrastive objective in a dual-encoder setup and records per-batch training and validation loss.
+- Decoder training
+  - Builds a dataset by pairing each paper's abstract with a random selection of its chunks.
+  - Fine-tunes a pretrained BART-base model with a seq2seq objective and records per-batch training and validation loss.
 - Retrieval functionality
   - Computes dense embeddings for all chunks in the corpus.
   - Encodes the user query and performs a fast similarity search to retrieve a set of likely candidate chunks.
   - Reranks the candidates with the encoder to promote the most semantically relevant papers to the top, and returns the final ranked list of papers.
+  - Generates a summary of the top chunk hits using the fine-tuned BART-base decoder.
 
 ---
 
@@ -50,17 +53,25 @@ The project is organized into several main directories:
   - `/processed` contains the processed versions of these articles, split into sections.
   - `/corpus` can be generated or downloaded from Hugging Face. It contains:
     - `chunks.jsonl` contains unencoded text chunks.
-    - `/embeddings` contains embeddings for the model w/o positional encoding:
+    - `/embeddings_nope` contains chunk embeddings produced by the mean pooling model without positional encoding.
       - `chunk_embeddings.pt` contains encoded chunks.
-      - `chunk_ids.json` contains chunk metadata for fast retrieval.
-    - `/embeddings_pt` contains embeddings for the model with positional encoding:
-      - `chunk_embeddings.pt` contains encoded chunks.
-      - `chunk_ids.json` contains chunk metadata for fast retrieval (since both models were trained on the same corpus, these IDs are identical to the non-positional ones).
+      - `chunk_ids.json` contains chunk metadata for fast retrieval (since all three models were trained on the same corpus, this file is identical across all three).
+    - `/embeddings_pe` contains chunk embeddings produced by the mean pooling model with positional encoding.
+    - `/embeddings_cls` contains chunk embeddings produced by the CLS token model with positional encoding.
   - `metadata.jsonl` contains article metadata.
-- `/model` contains the pretrained model and related files:
-  - `model.pt` with the pretrained model weights.
+- `/encoder` contains the pretrained model and related files:
   - `vocab.jsonl` with the corresponding vocabulary.
-  - `history.pt` with per-batch training and validation loss history.
+  - `model_nope` contains a pre-trained model with mean pooling and no positional encoding.
+    - `model.pt` with the pre-trained model weights.
+    - `history.pt` with per-batch training and validation loss history.
+    - `history.png` with png plot of loss history.
+  - `model_pe` contains a pre-trained model with mean pooling and positional encoding.
+  - `model_cls` contains a pre-trained model with CLS token and positional encoding.
+- When running from scratch, a `/decoder` folder will be created with the following contents:
+  - `model_bart` contains a pretrained BART-base model fine-tuned to the corpus.
+    - `model.pt` with the pre-trained model weights.
+    - `history.pt` with per-batch training and validation loss history.
+    - `history.png` with png plot of loss history.
 
 ---
 
