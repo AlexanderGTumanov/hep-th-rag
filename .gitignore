@@ -1,7 +1,8 @@
 /.DS_Store
 /src/.DS_Store
 /encoder/.DS_Store
+/decoder/.DS_Store
 /notebooks/.DS_Store
 /src/__pycache__/
 /data/
-/decoder/
+/decoder/model_bart/model.pt
