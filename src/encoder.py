@@ -563,7 +563,7 @@ def top_lexical_chunks(prompt, lexical_candidates = 1000, method = "bm25", corpu
             texts.append(body)
         _INDEX_CACHE[key_tokens] = (tokenized_corpus, texts)
     tokenized_corpus, texts = _INDEX_CACHE[key_tokens]
-    if method == "tfidf":
+    if method == "lexical":
         key_lex = ("tfidf-chunk-v2", key_tokens)
         if key_lex not in _INDEX_CACHE:
             vectorizer = TfidfVectorizer(tokenizer = lambda s: [t for t in _WORD_RE.findall(s or "") if t not in placeholders], token_pattern = None, lowercase = False, min_df = 1)

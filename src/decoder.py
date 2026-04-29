@@ -155,7 +155,7 @@ def train_model(
     epochs,
     batches = 0,
     start_batch = 0,
-    model_dir = "../model",
+    model_dir = "../decoder",
     dropout = 0.1,
     lr = 1e-5,
     max_grad_norm = 1,
