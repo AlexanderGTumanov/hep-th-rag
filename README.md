@@ -267,7 +267,7 @@ Computes neural similarity scores for a preselected list of candidate chunks and
 The `method` parameter controls how the final ordering is produced:
 
 - `method = "dense"`: rank candidates purely by dense similarity score.
-- `method = "tfidf"`: return candidates unchanged (TF–IDF order and scores).
+- `method = "lexical"`: return candidates unchanged (lexical order and scores).
 - `method = "pin_top"`: keep the first `k_pinned` chunks in the original TF–IDF order, and rerank the remaining chunks by dense score.
 - `method = "score_fusion"`: rank by a convex combination of dense and TF–IDF scores, `(1 - alpha) * dense + alpha * tfidf`.
 - `method = "rrf"`: rank using Reciprocal Rank Fusion, `1/(k_rrf + r_tfidf) + 1/(k_rrf + r_dense)`, where `r_tfidf` and `r_dense` are ranks in the TF–IDF and dense lists, respectively.
@@ -287,4 +287,38 @@ A diagnostics tool that checks whether a paper, or a list of papers identified b
 ---
 
 ## Contents of `decoder.py`
+
+#### `load_chunks(chunks_path = "../data/corpus/chunks.jsonl")`
+
+Loads all chunk records from a `chunks.jsonl` file into memory. Each non-empty line is parsed as JSON and stored as a dictionary in a list, which is then returned.
+
+#### `ArxivSummaryDataset(max_target_tokens = 512, corpus_dir = "../data/corpus")`
+
+Defines a PyTorch dataset for summarizing chunks. It loads text chunks and abstracts from `chunks.jsonl` and `abstracts.jsonl`, filters out documents that have less than three chunks or no abstract, and pairs each document with a sampled subset of its chunks as the input and its abstract as the target.
+
+For each item, the first chunk of the introduction is always included, and two additional chunks are sampled at random from the remainder. The three selected chunks are shuffled and joined with `</s>` separators to form the encoder input. Both input and target are tokenized using the BART tokenizer, with the input truncated to 1024 tokens and the target to `max_target_tokens`.
+
+#### `prepare_dataloaders(batch_size = 4, valid_split = 0.2, max_target_tokens = 512, seed = 42, corpus_dir = "../data/corpus")`
+
+Builds training and validation dataloaders from the summarization dataset. The data is split according to `valid_split` using the provided `seed`. A custom collate function pads all sequences in each batch to a uniform length: input sequences are padded with the tokenizer pad token, attention masks with zeros, and labels with `-100` so that padding positions are ignored by the cross-entropy loss. The loaders are returned with shuffling enabled for training and the last incomplete batch dropped in both.
+
+#### `prepare_model(model_name = "facebook/bart-base")`
+
+Loads a pretrained BART model, disables forced BOS token generation and weight tying between the embedding and output layers, casts to float32, and moves the model to the available device.
+
+#### `load_model(model_path)`
+
+Loads a pretrained model from the specified location.
+
+#### `train_model(model, train_loader, valid_loader, epochs, batches = 0, start_batch = 0, model_dir = "../decoder", dropout = 0.1, lr = 1e-5, max_grad_norm = 1, clip_start_batch = None)`
+
+Trains `model` using the cross-entropy loss computed by BART's forward pass over the provided labels. Training runs for the number of epochs specified by `epochs` and, optionally, for a fixed number of additional batches specified by `batches`. By default, these batches are taken from the beginning of the dataloader. The `start_batch` parameter can be used to specify a different starting batch. The `dropout` and `lr` parameters control the dropout rate and learning rate, respectively.
+
+The `max_grad_norm` parameter specifies the gradient clipping threshold applied during optimizer steps; gradients with a larger norm are scaled down to this value. The `clip_start_batch` parameter allows gradient clipping to be disabled for the first few batches of the first epoch. When continuing training from a previously trained model, it is recommended to set `clip_start_batch` to `None`. On MPS devices, the GPU cache is cleared after each optimizer step to avoid memory fragmentation.
+
+The model saves a checkpoint in the `model_dir` folder at the end of each training epoch. Along with the checkpoint, it records the per-batch training and validation losses, as well as the contents of all batches for which gradient clipping occurred.
+
+#### `summarize(chunk_ids, model, corpus_dir = "../data/corpus")`
+
+Generates a summary for a set of chunks identified by `chunk_ids`. The chunks are loaded from `chunks.jsonl`, joined with `</s>` separators, tokenized, and passed to the model's `generate` method with beam search. The decoded output is returned as a plain string. Note that due to context length limitations, all chunks beyond the third will be truncated by the decoder.
 
