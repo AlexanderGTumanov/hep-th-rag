@@ -4,7 +4,7 @@
 
 This project builds a Retrieval-Augmented Generation (RAG) system for the high-energy theoretical physics (hep-th) arXiv. Instead of relying on titles, abstracts, or keyword matching, the system operates on the full text of papers. Each document is split into smaller text chunks, and a neural network encodes these chunks into dense vector representations. User queries are embedded in the same space, and the system retrieves the most semantically relevant passages in the corpus. A separate neural network concisely summarizes the top chunk hits. The goal is to enable fast, meaning-aware search that can locate the exact sections where specific ideas or constructions are discussed.
 
-The retrieval model is a Transformer-based dual encoder that maps token sequences to fixed-size embeddings and is trained with a per-batch contrastive loss. It uses a dual-encoder architecture trained with a contrastive InfoNCE objective. The model uses a 256-dimensional token representation, four Transformer layers, eight attention heads per layer, and feed-forward blocks of size 640 with a dropout rate of 0.1, and produces a 256-dimensional output embedding.
+The retrieval model is a Transformer-based dual encoder that maps token sequences to fixed-size embeddings and is trained with a per-batch contrastive loss. It uses a dual-encoder architecture trained with a contrastive InfoNCE objective. The model uses a 256-dimensional token representation, four Transformer layers, eight attention heads per layer, feed-forward blocks of size 640, and produces a 256-dimensional output embedding.
 
 Three versions of this model are trained and available. Two use mean pooling to aggregate token embeddings into chunk embeddings, differing only in that one uses learned positional encoding and the other does not. The third also uses positional encoding but replaces mean pooling with a CLS token for aggregation. Unlike architectures such as GPT or BERT, where positional encoding is essential for predicting tokens at specific positions, it is not strictly necessary for a dual-encoder whose objective is to maximize semantic similarity between matched chunks in embedding space. Accordingly, neither of the two pooling models clearly outperforms the other, and they often complement each other, which motivated a combined fusion strategy for ranking. The CLS-based model underperformed in evaluation and is included purely for completeness.
 
@@ -50,7 +50,7 @@ The project is organized into several main directories:
 - `/src` includes the core Python code:
   - `scraper.py` for downloading and preparing arXiv data.
   - `model.py` for the neural network and embedding logic.
-- When running from scratch, a `/data` folder will be created with the following contents:
+- When running from scratch or downloading from Hugging Face, a `/data` folder will be created with the following contents:
   - `/raw` contains `source.tar.gz` files for all downloaded articles.
   - `/processed` contains the processed versions of these articles, split into sections.
   - `/corpus` can be generated or downloaded from Hugging Face. It contains:
@@ -69,7 +69,7 @@ The project is organized into several main directories:
     - `history.png` with png plot of loss history.
   - `model_pe` contains a pre-trained model with mean pooling and positional encoding.
   - `model_cls` contains a pre-trained model with CLS token and positional encoding.
-- When running from scratch, a `/decoder` folder will be created with the following contents:
+- When downloaded from Hugging Face, a `/decoder` folder will be created with the following contents:
   - `model_bart` contains a pretrained BART-base model fine-tuned to the corpus.
     - `model.pt` with the pre-trained model weights.
     - `history.pt` with per-batch training and validation loss history.
@@ -79,19 +79,23 @@ The project is organized into several main directories:
 
 ## Pretrained models
 
-The `/model` folder contains two pretrained encoders. Both were trained on the same corpus for the same number of epochs and share identical specifications. The only difference is that `model.pt` does not use positional encoding, while `model_pe.pt` does. The models were trained for three and a half epochs on a corpus of roughly 885,000 chunks built from hep-th arXiv publications between 2021 and 2025. The corresponding vocabulary, containing about 43,000 words, is provided in `vocab.jsonl`.
+The `/encoder` folder contains three pretrained encoders. All of them were trained on the same corpus for the same number of epochs and share identical specifications. The main difference is that `model_nope` and `model_pe` use mean pooling to aggregate chunk embeddings, while `model_cls` uses a CLS token. Additionally, `model_pe` and `model_cls` use positional encoding, while `model_nope` does not. The models were trained for three and a half epochs on a corpus of roughly 885,000 chunks built from hep-th arXiv publications between 2021 and 2025. A custom processing pipeline cleans the LaTeX sources by removing LaTeX commands, non-text environments, custom macro definitions, and overly technical sections. The corresponding vocabulary, containing about 43,000 words, is provided in `vocab.jsonl`.
 
-The encoder is a Transformer-based model with a 256-dimensional token representation, four self-attention layers, and eight attention heads per layer. Each layer uses a feed-forward block of size 640 with a dropout rate of 0.1. The model produces a 256-dimensional output embedding and does not use positional encoding, so it remains largely agnostic to the input sequence length within reasonable limits.
+The encoder is a Transformer-based model with a 256-dimensional token representation, four self-attention layers, and eight attention heads per layer. Each layer uses a feed-forward block of size 640 with a dropout rate of 0.1. The model produces a 256-dimensional output embedding.
 
-Training was primarily performed with a sequence length of 160 tokens, followed by an additional half-epoch at a context length of 320 tokens. The average chunk length in the corpus is about 320 tokens, so chunks were truncated during the main training stage. Truncation was applied randomly and independently at each epoch, which ensured that the model still saw the vast majority of the data before the transition to the 320-token context stage. This final half-epoch run was necessary to adapt the models to the context length at which retrieval is performed. The positional encoding model is considerably more dependent on this step, as it must learn encoding parameters corresponding to larger token distances, while the other model is largely context-length-agnostic.
+Training was primarily performed with a sequence length of 160 tokens, followed by an additional half-epoch at a context length of 320 tokens. The average chunk length in the corpus is about 320 tokens, so chunks were truncated during the main training stage. Truncation was applied randomly and independently at each epoch, which ensured that the model still saw the vast majority of the data before the transition to the 320-token context stage. This final half-epoch run was necessary to adapt the models to the context length at which retrieval is performed. The positional encoding models are considerably more dependent on this step, as they must learn encoding parameters corresponding to larger token distances, while the model without it is largely context-length-agnostic.
 
-Training and validation loss histories is stored in `history.pt` and `history_pe.pt` and plotted below.
+Training and validation loss histories is stored in `history_nope.pt`, `history_pe.pt`, `history_cls.pt` and plotted below.
 
 ![Training loss](encoder/model_nope/history.png)
 ![Training loss](encoder/model_pe/history.png)
 ![Training loss](encoder/model_cls/history.png)
 
-Both models follow the same broad trajectory, suggesting token content alone is sufficient for learning useful representations. The main difference is stability: the positional encoding model produces much smoother loss curves. Spikes reflect sensitivity to hard batches, and positional encoding helps by giving the model additional structure to differentiate token arrangements rather than collapsing them into similar embeddings.
+All three models follow the same broad trajectory, suggesting token content alone is sufficient for learning useful representations. The main difference is stability: the positional encoding models produces much smoother loss curves. Spikes reflect sensitivity to hard batches, and positional encoding helps by giving the model additional structure to differentiate token arrangements rather than collapsing them into similar embeddings. Adding the CLS token also helps stabilize training.
+
+The decoder is based on a pretrained BART-base model with a context length of 1024 tokens, which is sufficient for exactly three full corpus chunks. It was fine-tuned to predict paper abstracts from three randomly selected chunks, trained for three epochs, and produced the following loss curve:
+
+![Training loss](decoder/model_bart/history.png)
 
 ---
 
@@ -115,7 +119,7 @@ This prompt contains several specific technical terms, but most of the phrasing 
 - **2112.10569:** *An Operator Product Expansion for Form Factors III. Finite Coupling and Multi-Particle Contributions* by Amit Sever, Alexander G. Tumanov, Matthias Wilhelm
 - **2105.13367:** *An Operator Product Expansion for Form Factors II. Born level* by Amit Sever, Alexander G. Tumanov, Matthias Wilhelm
 
-After retrieving the top 5000 lexical candidate chunks, we find mixed results:
+The first step retrieves the top 5000 lexical candidate chunks using TF-IDF, a standard term-frequency-based scoring method. The notebook uses BM25 instead, which rewards rare token matches more aggressively, but its results are less illustrative, so TF-IDF is used here for clarity. The resulting lexical ranking produces mixed results:
 
 ```
 Paper rankings before dense reranking:
@@ -144,13 +148,7 @@ Paper rankings after Reciprocal Rank Fusion:
 2105.13367: present, rank =  438, score =  0.003125
 ```
 
-This represents a compromise that combines the strengths of both approaches. All papers move up in the rankings, while `2112.10569` only drops slightly. See the notebook for more detailed explanations and additional examples.
-
----
-
-## Performance difference between models with and w/o positional encoding
-
-To our surprise, the model without positional encoding outperformed the one with it in the vast majority of tests. We hypothesize that this is because the inability to distinguish "cat on a mat" from "mat on a cat" matters little in a dual-encoder dense retrieval setup, where the task is semantic matching rather than word-order sensitivity. What matters more is the ability to recognize that "cat sits on a mat and licks his butt" and "while sitting on a mat, cat licks his butt" are semantically equivalent, and here the positional model systematically underperforms by pushing such phrases apart in embedding space. Positional encoding does offer one concrete benefit: it stabilizes training, making the model more robust to bad batches and producing noticeably less noisy loss curves. It also occasionally performs better on longer prompts containing highly positional word combinations, though achieving this typically requires the prompts to be deliberately engineered.
+This represents a compromise that combines the strengths of both approaches. All papers move up in the rankings, while `2112.10569` only drops slightly. See the notebook for more detailed explanations, additional examples, decoder outputs, and performance comparisons between encoder models.
 
 ---
 
@@ -188,7 +186,7 @@ Builds a corpus of text chunks from all papers in the `/processed` folder and sa
 
 ---
 
-## Contents of `model.py`
+## Contents of `encoder.py`
 
 #### `Vocab(token_to_id, id_to_token)`
 
@@ -200,7 +198,7 @@ The `encode` method converts a list of tokens into their corresponding IDs, repl
 
 Builds a vocabulary by scanning the loaded chunks, collecting all distinct tokens, and ordering them by frequency of occurrence. The tail of this distribution typically consists of rare terminology and mistyped words, and should be truncated. This can be done either by setting a minimum frequency with `min_freq` or by hard-limiting the vocabulary size with `max_vocab`. The resulting vocabulary is returned and saved to `vocab_path`. If the file already exists, it is only overwritten when `overwrite` is set to `True`.
 
-#### `load_vocab(vocab_path = "../model/vocab.jsonl")`
+#### `load_vocab(vocab_path = "../encoder/vocab.jsonl")`
 
 Loads a vocabulary file from the specified location.
 
@@ -238,7 +236,7 @@ Positional encoding is optional and controlled by the `use_positional_encoding` 
 
 Loads a pretrained model from the specified location.
 
-#### `train_model(model, train_loader, valid_loader, epochs, batches = 0, start_batch = 0, model_dir = "../model", dropout = 0.1, lr = 3e-4, tau = 0.05, max_grad_norm = 1.0, clip_start_batch = 0)`
+#### `train_model(model, train_loader, valid_loader, epochs, batches = 0, start_batch = 0, model_dir = "../encoder", dropout = 0.1, lr = 3e-4, tau = 0.05, max_grad_norm = 1.0, clip_start_batch = 0)`
 
 Trains `model` using an InfoNCE / NT-Xent–style contrastive objective in a dual-encoder setup. Training runs for the number of epochs specified by `epochs` and, optionally, for a fixed number of additional batches specified by `batches`. By default, these batches are taken from the beginning of the dataloader. The `start_batch` parameter can be used to specify a different starting batch. The `train_loader` and `valid_loader` provide the input data. The `dropout` and `lr` parameters control the dropout rate and learning rate, respectively.
 
@@ -246,7 +244,7 @@ The `tau` parameter sets the temperature of the similarity distribution used in 
 
 The `clip_start_batch` parameter allows gradient clipping to be disabled for the first few batches of the first epoch. Early training steps of a freshly initialized model often produce unusually large gradients due to random parameter initialization, and clipping during this phase can slow training. When continuing training from a previously trained model, it is recommended to set `clip_start_batch` to `None`.
 
-The model saves a checkpoint in the `/model` folder at the end of each training epoch. Along with the checkpoint, it records the per-batch training and validation losses, as well as the contents of all batches for which gradient clipping occurred.
+The model saves a checkpoint in the `model_dir` folder at the end of each training epoch. Along with the checkpoint, it records the per-batch training and validation losses, as well as the contents of all batches for which gradient clipping occurred.
 
 #### `build_chunk_embeddings(model, loader, corpus_dir = "../data/corpus", embeddings_subdir = "embeddings", overwrite = False)`
 
@@ -258,7 +256,7 @@ Normalizes and prepares a user query for the encoder. The text is tokenized, map
 
 #### top_lexical_chunks(prompt, lexical_candidates = 1000, corpus_dir = "../data/corpus", embeddings_subdir = "embeddings")
 
-Runs a TF–IDF lexical search over the chunk corpus and returns the top-scoring chunk matches for the query. The corpus is vectorized in a TF–IDF space (with placeholder tokens filtered out), cosine similarities between the query and all chunks are computed, and the best matches are selected. The output is a list of `(tfidf_score, chunk_id)` pairs sorted in decreasing TF–IDF score. `lexical_candidates` controls how many top chunks to return. `embeddings_subdir` must be specified because the function borrows chunk IDs from the corresponding embedding run. The embeddings themselves are not used at this stage.
+Runs a lexical search over the chunk corpus and returns the top-scoring chunk matches for the query. The corpus is vectorized (with placeholder tokens filtered out), cosine similarities between the query and all chunks are computed, and the best matches are selected. The output is a list of `(lexical_score, chunk_id)` pairs sorted in decreasing lexical score. The `method` parameter accepts two values: `tfidf` and `bm25`. `lexical_candidates` controls how many top chunks to return. `embeddings_subdir` must be specified because the function borrows chunk IDs from the corresponding embedding run. The embeddings themselves are not used at this stage.
 
 #### dense_rerank(candidates, prompt, model, vocab, seq_len, method = "dense", k_pinned = 10, k_rrf = 60, alpha = 0.2, corpus_dir = "../data/corpus", embeddings_subdir = "embeddings")
 
@@ -285,4 +283,8 @@ Prints retrieval results in a human-readable form. It accepts either chunk-level
 #### `find_paper(matches, doc_ids, corpus_dir = "../data/corpus")`
 
 A diagnostics tool that checks whether a paper, or a list of papers identified by their arXiv IDs `doc_ids`, appears in the `matches` list and reports its best rank and score. `doc_ids` can be either a single paper ID string or a list of such strings. This function accepts both chunk-level and paper-level `matches` variables.
+
+---
+
+## Contents of `decoder.py`
 
