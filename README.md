@@ -49,7 +49,8 @@ The project is organized into several main directories:
 - `/notebooks` contains a Jupyter notebook that demonstrates the model’s architecture, training, and retrieval results.
 - `/src` includes the core Python code:
   - `scraper.py` for downloading and preparing arXiv data.
-  - `model.py` for the neural network and embedding logic.
+  - `encoder.py` for the encoder neural network and embedding logic.
+  - `decoder.py` for the decoder neural network and summary generation tools.
 - When running from scratch or downloading from Hugging Face, a `/data` folder will be created with the following contents:
   - `/raw` contains `source.tar.gz` files for all downloaded articles.
   - `/processed` contains the processed versions of these articles, split into sections.
